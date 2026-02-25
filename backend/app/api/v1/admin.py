@@ -642,55 +642,129 @@ async def admin_command(payload: AdminCommand, db: AsyncSession = Depends(get_se
 
 # ── Helper: NL condition to expression ───────────────────────────────────
 
+def _normalize_metric_aliases(text: str) -> str:
+    aliases = {
+        r"\boperating\s+costs?\b": "cost",
+        r"\bcosts?\b": "cost",
+        r"\brevenues?\b": "revenue",
+        r"\btech(?:nical)?\s+debt\b": "technical_debt",
+        r"\bdebt\b": "technical_debt",
+        r"\bprofit\s*margin\b": "margin",
+    }
+    out = text.lower()
+    for pattern, replacement in aliases.items():
+        out = re.sub(pattern, replacement, out, flags=re.IGNORECASE)
+    return out
+
+
+def _num_str(value: float) -> str:
+    if float(value).is_integer():
+        return str(int(value))
+    return f"{value:.6f}".rstrip("0").rstrip(".")
+
+
+def _parse_number(raw: str) -> float:
+    cleaned = raw.replace(",", "").replace("$", "").replace("%", "").strip()
+    return float(cleaned)
+
+
+def _coerce_threshold(metric: str, raw_value: str, percent_word: bool = False) -> str:
+    value = _parse_number(raw_value)
+    if metric == "margin" and (percent_word or "%" in raw_value):
+        value = value / 100.0
+    return _num_str(value)
+
+
+def _clause_to_expression(clause: str) -> str:
+    c = _normalize_metric_aliases(clause.strip())
+
+    comp_ops = [
+        (">=", r"(?:>=|at\s+least|no\s+less\s+than|not\s+less\s+than)"),
+        ("<=", r"(?:<=|at\s+most|no\s+more\s+than|not\s+more\s+than)"),
+        (">", r"(?:>|greater\s+than|above|over|more\s+than|exceeds?|surpasses?)"),
+        ("<", r"(?:<|less\s+than|below|under|falls?\s+below|drops?\s+below)"),
+    ]
+
+    # Example: cost greater than 75 percent of revenue -> cost > (revenue * 0.75)
+    for op, op_pat in comp_ops:
+        m = re.search(
+            rf"\b([a-z_][a-z0-9_]*)\b\s*(?:is\s+)?{op_pat}\s*([\d.,]+)\s*(%|percent)?\s+of\s+\b([a-z_][a-z0-9_]*)\b",
+            c,
+            flags=re.IGNORECASE,
+        )
+        if m:
+            left = m.group(1)
+            pct = _parse_number(m.group(2))
+            ratio = pct / 100.0
+            right = m.group(4)
+            return f"{left} {op} ({right} * {_num_str(ratio)})"
+
+    # Example: margin between 10 and 20 percent
+    m = re.search(
+        r"\b([a-z_][a-z0-9_]*)\b\s+between\s+([\d.,]+)\s*(%|percent)?\s+and\s+([\d.,]+)\s*(%|percent)?",
+        c,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        metric = m.group(1)
+        lower = _coerce_threshold(metric, m.group(2), percent_word=bool(m.group(3)))
+        upper = _coerce_threshold(metric, m.group(4), percent_word=bool(m.group(5)))
+        return f"({metric} >= {lower}) and ({metric} <= {upper})"
+
+    # Example: margin below 12 percent / cost > 220
+    for op, op_pat in comp_ops:
+        m = re.search(
+            rf"\b([a-z_][a-z0-9_]*)\b\s*(?:is\s+)?{op_pat}\s*([\d.,]+)\s*(%|percent)?",
+            c,
+            flags=re.IGNORECASE,
+        )
+        if m:
+            metric = m.group(1)
+            threshold = _coerce_threshold(metric, m.group(2), percent_word=bool(m.group(3)))
+            return f"{metric} {op} {threshold}"
+
+    return clause
+
+
 def _nl_to_condition(text: str) -> str:
-    """Convert natural language condition to engine expression."""
-    t = text.lower().strip()
+    """Convert natural language condition to deterministic engine expression."""
+    normalized = _normalize_metric_aliases(text.strip())
+    parts = re.split(r"\s+(and|or)\s+", normalized, flags=re.IGNORECASE)
+    if len(parts) == 1:
+        return _clause_to_expression(parts[0])
 
-    # Pattern: "metric > value" or "metric is above value"
-    m = re.search(r'(\w+)\s*(?:>|is\s+(?:above|greater\s+than|over|more\s+than))\s*([\d.]+)', t)
-    if m:
-        return f"{m.group(1)} > {m.group(2)}"
+    expr_parts: List[str] = []
+    i = 0
+    while i < len(parts):
+        token = parts[i].strip()
+        if token.lower() in {"and", "or"}:
+            expr_parts.append(token.lower())
+        elif token:
+            expr_parts.append(f"({_clause_to_expression(token)})")
+        i += 1
 
-    m = re.search(r'(\w+)\s*(?:<|is\s+(?:below|less\s+than|under))\s*([\d.]+)', t)
-    if m:
-        return f"{m.group(1)} < {m.group(2)}"
-
-    m = re.search(r'(\w+)\s*(?:>=|is\s+(?:at\s+least))\s*([\d.]+)', t)
-    if m:
-        return f"{m.group(1)} >= {m.group(2)}"
-
-    m = re.search(r'(\w+)\s*(?:<=|is\s+(?:at\s+most))\s*([\d.]+)', t)
-    if m:
-        return f"{m.group(1)} <= {m.group(2)}"
-
-    # Pattern: "metric drops below value"
-    m = re.search(r'(\w+)\s+(?:drops?|falls?|goes?)\s+(?:below|under)\s+([\d.]+)', t)
-    if m:
-        return f"{m.group(1)} < {m.group(2)}"
-
-    m = re.search(r'(\w+)\s+(?:exceeds?|surpasses?|goes?\s+(?:above|over))\s+([\d.]+)', t)
-    if m:
-        return f"{m.group(1)} > {m.group(2)}"
-
-    # Fallback: return as-is
-    return text
+    return " ".join(expr_parts) if expr_parts else text
 
 
 def _nl_to_impact(text: str) -> str:
     """Convert natural language impact to engine impact expression."""
     t = text.lower().strip()
 
-    m = re.search(r'(?:state[_\s]*impact|score)\s*([+-]?\s*[\d.]+)', t)
+    m = re.search(r'(?:state[_\s]*impact|impact|score)\s*(?:to\s*)?([+-]?\s*[\d.]+)', t)
     if m:
-        return f"state_impact {m.group(1).replace(' ', '')}"
+        return m.group(1).replace(' ', '')
 
-    m = re.search(r'(?:add|increase|boost)\s*([\d.]+)\s*(?:to\s+)?(\w+)', t)
+    m = re.search(r'(?:add|increase|boost)\s*(?:by\s*)?([\d.]+)', t)
     if m:
-        return f"{m.group(2)} +{m.group(1)}"
+        return f"+{m.group(1)}"
 
-    m = re.search(r'(?:reduce|decrease|subtract)\s*([\d.]+)\s*(?:from\s+)?(\w+)', t)
+    m = re.search(r'(?:reduce|decrease|subtract)\s*(?:by\s*)?([\d.]+)', t)
     if m:
-        return f"{m.group(2)} -{m.group(1)}"
+        return f"-{m.group(1)}"
+
+    m = re.search(r'([+-]?\d+(?:\.\d+)?)', t)
+    if m:
+        return m.group(1)
 
     return text
 
