@@ -14,6 +14,13 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$SecretKey,
 
+    [string]$OpenClawExecutionMode = "remote_http",
+    [string]$OpenClawAllowDeterministicFallback = "true",
+    [string]$OpenClawApiBaseUrl = "",
+    [string]$OpenClawApiAgentPath = "/agent",
+    [string]$OpenClawApiAuthToken = "",
+    [string]$OpenClawAgentTimeoutSeconds = "90",
+
     [string]$User = "ubuntu"
 )
 
@@ -42,6 +49,12 @@ SUPABASE_SERVICE_ROLE_KEY=$SupabaseServiceRoleKey
 SECRET_KEY=$SecretKey
 ENV=production
 REDIS_URL=redis://localhost:6379/0
+OPENCLAW_EXECUTION_MODE=$OpenClawExecutionMode
+OPENCLAW_ALLOW_DETERMINISTIC_FALLBACK=$OpenClawAllowDeterministicFallback
+OPENCLAW_API_BASE_URL=$OpenClawApiBaseUrl
+OPENCLAW_API_AGENT_PATH=$OpenClawApiAgentPath
+OPENCLAW_API_AUTH_TOKEN=$OpenClawApiAuthToken
+OPENCLAW_AGENT_TIMEOUT_SECONDS=$OpenClawAgentTimeoutSeconds
 "@
 $remoteEnvB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($remoteEnv))
 ssh -o StrictHostKeyChecking=no -i $KeyPath "${User}@${RemoteHost}" "mkdir -p ~/.config/strategos && echo '$remoteEnvB64' | base64 -d > ~/.config/strategos/strategos.env"
