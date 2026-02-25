@@ -1,0 +1,45 @@
+__pycache__/
+.venv/
+venv/
+env/
+*.pyc
+*.pyo
+*.pyd
+env/
+node_modules/
+dist/
+.DS_Store
+/.idea
+/.vscode
+instance/
+.pytest_cache/
+
+# Local env/secrets
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# Logs and runtime artifacts
+*.log
+*.pid
+.coverage
+htmlcov/
+
+# Frontend build outputs
+frontend/.next/
+frontend/out/
+
+# Python tooling caches
+.mypy_cache/
+.ruff_cache/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# OS/editor noise
+Thumbs.db

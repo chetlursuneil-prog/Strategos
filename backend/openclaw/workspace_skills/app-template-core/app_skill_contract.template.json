@@ -1,0 +1,37 @@
+{
+  "bundle_name": "app-template-openclaw-skills",
+  "bundle_version": "2026.02.23",
+  "service": {
+    "name": "APP_TEMPLATE",
+    "base_url_env": "APP_TEMPLATE_API_BASE_URL",
+    "auth": {
+      "type": "bearer",
+      "token_env": "APP_TEMPLATE_API_TOKEN",
+      "header_name": "Authorization",
+      "prefix": "Bearer "
+    },
+    "timeout_seconds_env": "APP_TEMPLATE_REQUEST_TIMEOUT_SECONDS",
+    "retry_count_env": "APP_TEMPLATE_RETRY_COUNT"
+  },
+  "skills": [
+    {
+      "id": "app_template.create_session",
+      "description": "Create application session",
+      "method": "POST",
+      "path": "/<app>/skills/create_session"
+    },
+    {
+      "id": "app_template.run_engine",
+      "description": "Run deterministic or business engine",
+      "method": "POST",
+      "path": "/<app>/skills/run_engine"
+    },
+    {
+      "id": "app_template.fetch_state",
+      "description": "Fetch latest state",
+      "method": "GET",
+      "path": "/<app>/skills/state/{session_id}",
+      "path_params": ["session_id"]
+    }
+  ]
+}

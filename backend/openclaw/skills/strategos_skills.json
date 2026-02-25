@@ -1,0 +1,91 @@
+{
+  "bundle_name": "strategos-openclaw-skills",
+  "bundle_version": "2026.02.23",
+  "service": {
+    "name": "STRATEGOS",
+    "base_url_env": "STRATEGOS_API_BASE_URL",
+    "auth": {
+      "type": "bearer",
+      "token_env": "STRATEGOS_API_TOKEN",
+      "header_name": "Authorization",
+      "prefix": "Bearer "
+    },
+    "timeout_seconds_env": "STRATEGOS_REQUEST_TIMEOUT_SECONDS",
+    "retry_count_env": "STRATEGOS_RETRY_COUNT"
+  },
+  "skills": [
+    {
+      "id": "strategos.create_session",
+      "description": "Create a deterministic transformation session",
+      "method": "POST",
+      "path": "/advisory/skills/create_session",
+      "request": {
+        "tenant_id": "uuid",
+        "model_version_id": "uuid",
+        "name": "string|null"
+      },
+      "response_path": "data.session_id"
+    },
+    {
+      "id": "strategos.run_engine",
+      "description": "Run deterministic engine using structured input",
+      "method": "POST",
+      "path": "/advisory/skills/run_engine",
+      "request": {
+        "tenant_id": "uuid|null",
+        "model_version_id": "uuid|null",
+        "session_id": "uuid|null",
+        "input": "object"
+      },
+      "response_path": "data.snapshot"
+    },
+    {
+      "id": "strategos.fetch_state",
+      "description": "Fetch latest deterministic state for a session",
+      "method": "GET",
+      "path": "/advisory/skills/state/{session_id}",
+      "path_params": ["session_id"],
+      "response_path": "data"
+    },
+    {
+      "id": "strategos.fetch_contributions",
+      "description": "Fetch contribution breakdown and rule scores",
+      "method": "GET",
+      "path": "/advisory/skills/contributions/{session_id}",
+      "path_params": ["session_id"],
+      "response_path": "data"
+    },
+    {
+      "id": "strategos.fetch_restructuring",
+      "description": "Fetch restructuring actions for latest session state",
+      "method": "GET",
+      "path": "/advisory/skills/restructuring/{session_id}",
+      "path_params": ["session_id"],
+      "response_path": "data"
+    },
+    {
+      "id": "strategos.fetch_board_insights",
+      "description": "Fetch multi-agent board insights generated from deterministic outputs",
+      "method": "GET",
+      "path": "/advisory/skills/board_insights/{session_id}",
+      "path_params": ["session_id"],
+      "response_path": "data"
+    },
+    {
+      "id": "strategos.list_model_versions",
+      "description": "List model versions for tenant / active filter",
+      "method": "GET",
+      "path": "/advisory/skills/model_versions",
+      "query_params": ["tenant_id", "active_only"],
+      "response_path": "data.model_versions"
+    },
+    {
+      "id": "strategos.show_rules",
+      "description": "Developer command to inspect active rules",
+      "method": "GET",
+      "path": "/advisory/skills/show_rules",
+      "query_params": ["model_version_id", "active_only"],
+      "response_path": "data.rules"
+    }
+  ]
+}

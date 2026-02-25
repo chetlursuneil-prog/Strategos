@@ -1,0 +1,90 @@
+{
+  "board_name": "STRATEGOS Advisory Board",
+  "version": "2026.02.23",
+  "execution_contract": {
+    "mode": "strict",
+    "required_sequence": [
+      "strategos.create_session",
+      "strategos.run_engine",
+      "strategos.fetch_state",
+      "strategos.fetch_contributions",
+      "strategos.fetch_restructuring",
+      "strategos.fetch_board_insights"
+    ],
+    "requires_session_id": true,
+    "requires_board_synthesis": true,
+    "final_payload_required_keys": [
+      "session_id",
+      "deterministic_state",
+      "contributions",
+      "restructuring",
+      "board_insights",
+      "executive_summary"
+    ]
+  },
+  "constraints": {
+    "no_direct_db_access": true,
+    "rest_api_only": true,
+    "no_deterministic_mutation": true
+  },
+  "agents": [
+    {
+      "id": "schema_extraction_agent",
+      "role": "Converts natural language into structured STRATEGOS session input schema",
+      "skills": [
+        "strategos.list_model_versions",
+        "strategos.show_rules",
+        "strategos.create_session"
+      ]
+    },
+    {
+      "id": "strategy_advisor",
+      "role": "Interprets deterministic outputs and creates modernization strategy narratives",
+      "skills": [
+        "strategos.run_engine",
+        "strategos.fetch_state",
+        "strategos.fetch_contributions",
+        "strategos.fetch_board_insights"
+      ]
+    },
+    {
+      "id": "risk_officer",
+      "role": "Explains CRITICAL triggers and mitigation priorities",
+      "skills": [
+        "strategos.fetch_state",
+        "strategos.fetch_restructuring",
+        "strategos.fetch_contributions",
+        "strategos.fetch_board_insights"
+      ]
+    },
+    {
+      "id": "architecture_advisor",
+      "role": "Interprets technical modernization posture from deterministic outputs",
+      "skills": [
+        "strategos.run_engine",
+        "strategos.fetch_contributions",
+        "strategos.fetch_board_insights"
+      ]
+    },
+    {
+      "id": "financial_impact_advisor",
+      "role": "Explains financial exposure and capital allocation implications",
+      "skills": [
+        "strategos.run_engine",
+        "strategos.fetch_state",
+        "strategos.fetch_contributions",
+        "strategos.fetch_board_insights"
+      ]
+    },
+    {
+      "id": "synthesis_advisor",
+      "role": "Aggregates all advisory outputs into board-ready summary without new deterministic claims",
+      "skills": [
+        "strategos.fetch_state",
+        "strategos.fetch_contributions",
+        "strategos.fetch_restructuring",
+        "strategos.fetch_board_insights"
+      ]
+    }
+  ]
+}

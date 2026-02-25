@@ -1,0 +1,47 @@
+flowchart LR
+  subgraph Client[User Channels]
+    TG[Telegram User]
+    WEB[Internal Admin UI\nNext.js frontend]
+  end
+
+  subgraph OC[OpenClaw Runtime on EC2]
+    MAIN[Sara Main Agent]
+    OCWS[Workspace Prompts\nAGENTS/BOOTSTRAP/SOUL]
+    BOARD[Advisory Board Config\nstrategos_advisory_board.json]
+    SKBUNDLE[STRATEGOS Skill Bundle\nstrategos_skills.json]
+  end
+
+  subgraph API[STRATEGOS Backend API\nFastAPI /api/v1]
+    INTAKE[/intake]
+    ADV[/advisory/skills/*]
+    ADMIN[/admin/command + /admin/agents]
+    RULES[/rules]
+    ENGINE[Deterministic Engine]
+  end
+
+  subgraph DATA[Data Layer]
+    DB[(Postgres/SQLite)]
+    RSET[(Rules + Conditions + Impacts)]
+    SESS[(Transformation Sessions + Snapshots)]
+    AUD[(Audit Logs)]
+  end
+
+  TG --> MAIN
+  WEB --> API
+  MAIN --> OCWS
+  MAIN --> BOARD
+  MAIN --> SKBUNDLE
+  MAIN --> ADV
+
+  INTAKE --> ENGINE
+  ADV --> ENGINE
+  RULES --> RSET
+  ADMIN --> DB
+  ENGINE --> DB
+  DB --> RSET
+  DB --> SESS
+  DB --> AUD
+
+  ENGINE --> ADV
+  ADV --> MAIN
+  MAIN --> TG
