@@ -4,10 +4,10 @@ import json
 import uuid
 import os
 import subprocess
-import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+import httpx
 from pydantic import BaseModel, Field
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -89,44 +89,114 @@ def _extract_snapshot_evidence(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def _build_agent_insight(agent_id: str, role: str, snapshot: Dict[str, Any]) -> Dict[str, Any]:
-    runtime_agent_id, model, role_prompt = _resolve_runtime_profile(agent_id, role)
-    openclaw_bin = os.getenv("OPENCLAW_BIN", "/home/ubuntu/.npm-global/bin/openclaw").strip()
-    timeout_sec = int(os.getenv("OPENCLAW_AGENT_TIMEOUT_SECONDS", "90"))
+def _extract_openclaw_text(payload: Any) -> str:
+    if payload is None:
+        return ""
 
-    if runtime_agent_id == "":
-        raise HTTPException(status_code=503, detail=f"runtime_agent_mapping_missing_for_{agent_id}")
+    if isinstance(payload, str):
+        return payload.strip()
 
-    if not shutil.which(openclaw_bin) and not Path(openclaw_bin).exists():
-        raise HTTPException(status_code=503, detail=f"openclaw_binary_not_found: {openclaw_bin}")
+    if isinstance(payload, dict):
+        candidate_keys = [
+            "insight",
+            "response",
+            "output",
+            "message",
+            "content",
+            "text",
+        ]
+        for key in candidate_keys:
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
 
-    evidence = _extract_snapshot_evidence(snapshot)
+        data = payload.get("data")
+        if isinstance(data, dict):
+            nested = _extract_openclaw_text(data)
+            if nested:
+                return nested
 
-    agent_payload = {
-        "agent_id": agent_id,
-        "runtime_agent_id": runtime_agent_id,
-        "role": role,
-        "model": model,
-        "snapshot": {
-            "state": snapshot.get("state"),
-            "score_breakdown": snapshot.get("score_breakdown"),
-            "scores": snapshot.get("scores"),
-            "contributions": snapshot.get("contributions"),
-            "restructuring_actions": snapshot.get("restructuring_actions"),
-        },
-        "instructions": [
-            "Respond as this advisory agent only.",
-            "Use deterministic artifacts only; do not invent deterministic values.",
-            "Return strict JSON: {\"insight\": string}.",
-        ],
+        return json.dumps(payload)
+
+    if isinstance(payload, list):
+        if not payload:
+            return ""
+        return _extract_openclaw_text(payload[0])
+
+    return str(payload).strip()
+
+
+def _build_deterministic_fallback_insight(role: str, evidence: Dict[str, Any]) -> str:
+    state = str(evidence.get("state") or "UNKNOWN")
+    triggered = evidence.get("triggered_conditions") or []
+    actions = evidence.get("restructuring_actions") or []
+
+    triggered_text = ", ".join(str(x) for x in triggered[:3]) if triggered else "no triggered diagnostic conditions"
+    action_text = ", ".join(str(x) for x in actions[:2]) if actions else "no restructuring actions returned"
+
+    return (
+        f"{role}: Deterministic advisory fallback generated from STRATEGOS snapshot. "
+        f"Current state is {state}; key triggers: {triggered_text}; "
+        f"recommended execution focus: {action_text}."
+    )
+
+
+async def _invoke_openclaw_remote(runtime_agent_id: str, user_message: str, timeout_sec: int) -> str:
+    base_url = os.getenv("OPENCLAW_API_BASE_URL", "").strip().rstrip("/")
+    if not base_url:
+        raise HTTPException(status_code=503, detail="openclaw_api_base_url_missing")
+
+    endpoint = os.getenv("OPENCLAW_API_AGENT_PATH", "/agent").strip()
+    if not endpoint.startswith("/"):
+        endpoint = f"/{endpoint}"
+
+    token = os.getenv("OPENCLAW_API_AUTH_TOKEN", "").strip()
+    headers: Dict[str, str] = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    payload = {
+        "agent": runtime_agent_id,
+        "message": user_message,
+        "json": True,
     }
 
-    user_message = (
-        f"{role_prompt}\n\n"
-        "Use only the deterministic STRATEGOS payload below.\n"
-        "Return strict JSON with one key: insight.\n\n"
-        f"{json.dumps(agent_payload)}"
-    )
+    request_timeout = float(os.getenv("OPENCLAW_API_TIMEOUT_SECONDS", str(timeout_sec)))
+
+    try:
+        async with httpx.AsyncClient(timeout=request_timeout) as client:
+            res = await client.post(f"{base_url}{endpoint}", headers=headers, json=payload)
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail=f"openclaw_remote_timeout: {runtime_agent_id}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"openclaw_remote_invoke_failed: {exc}")
+
+    if res.status_code >= 400:
+        detail = (res.text or "")[:1000]
+        raise HTTPException(status_code=502, detail=f"openclaw_remote_error_{runtime_agent_id}: {detail}")
+
+    try:
+        body = res.json()
+    except Exception:
+        body = res.text
+
+    content = _extract_openclaw_text(body)
+    if not content:
+        raise HTTPException(status_code=502, detail=f"openclaw_remote_empty_output: {runtime_agent_id}")
+
+    try:
+        maybe_json = json.loads(content)
+        parsed_content = _extract_openclaw_text(maybe_json)
+        if parsed_content:
+            return parsed_content
+    except Exception:
+        pass
+
+    return content
+
+
+async def _invoke_openclaw_local_cli(runtime_agent_id: str, user_message: str, timeout_sec: int) -> str:
+    openclaw_bin = os.getenv("OPENCLAW_BIN", "/home/ubuntu/.npm-global/bin/openclaw").strip()
 
     cmd = [
         openclaw_bin,
@@ -159,34 +229,93 @@ async def _build_agent_insight(agent_id: str, role: str, snapshot: Dict[str, Any
     if not raw_output:
         raise HTTPException(status_code=502, detail=f"openclaw_agent_empty_output: {runtime_agent_id}")
 
-    content = raw_output
-    try:
-        parsed_cli = json.loads(raw_output)
-        if isinstance(parsed_cli, dict):
-            content = str(
-                parsed_cli.get("response")
-                or parsed_cli.get("output")
-                or parsed_cli.get("message")
-                or parsed_cli.get("content")
-                or parsed_cli
-            ).strip()
-    except Exception:
-        content = raw_output
-
+    content = _extract_openclaw_text(raw_output)
     try:
         parsed = json.loads(content)
-        insight_text = str(parsed.get("insight") or "").strip()
+        content = _extract_openclaw_text(parsed) or content
     except Exception:
-        insight_text = content
+        pass
+
+    if not content:
+        raise HTTPException(status_code=502, detail=f"openclaw_agent_missing_insight: {runtime_agent_id}")
+
+    return content
+
+
+async def _build_agent_insight(agent_id: str, role: str, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    runtime_agent_id, model, role_prompt = _resolve_runtime_profile(agent_id, role)
+    timeout_sec = int(os.getenv("OPENCLAW_AGENT_TIMEOUT_SECONDS", "90"))
+    execution_mode = os.getenv("OPENCLAW_EXECUTION_MODE", "remote_http").strip().lower()
+    allow_fallback = os.getenv("OPENCLAW_ALLOW_DETERMINISTIC_FALLBACK", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+    if runtime_agent_id == "":
+        raise HTTPException(status_code=503, detail=f"runtime_agent_mapping_missing_for_{agent_id}")
+
+    evidence = _extract_snapshot_evidence(snapshot)
+
+    agent_payload = {
+        "agent_id": agent_id,
+        "runtime_agent_id": runtime_agent_id,
+        "role": role,
+        "model": model,
+        "snapshot": {
+            "state": snapshot.get("state"),
+            "score_breakdown": snapshot.get("score_breakdown"),
+            "scores": snapshot.get("scores"),
+            "contributions": snapshot.get("contributions"),
+            "restructuring_actions": snapshot.get("restructuring_actions"),
+        },
+        "instructions": [
+            "Respond as this advisory agent only.",
+            "Use deterministic artifacts only; do not invent deterministic values.",
+            "Return strict JSON: {\"insight\": string}.",
+        ],
+    }
+
+    user_message = (
+        f"{role_prompt}\n\n"
+        "Use only the deterministic STRATEGOS payload below.\n"
+        "Return strict JSON with one key: insight.\n\n"
+        f"{json.dumps(agent_payload)}"
+    )
+
+    insight_text = ""
+    failure_detail = ""
+
+    try:
+        if execution_mode in {"remote_http", "remote", "http"}:
+            insight_text = await _invoke_openclaw_remote(runtime_agent_id, user_message, timeout_sec)
+        elif execution_mode in {"local_cli", "cli"}:
+            insight_text = await _invoke_openclaw_local_cli(runtime_agent_id, user_message, timeout_sec)
+        elif execution_mode in {"deterministic_fallback", "fallback"}:
+            insight_text = _build_deterministic_fallback_insight(role, evidence)
+        else:
+            raise HTTPException(status_code=503, detail=f"unsupported_openclaw_execution_mode: {execution_mode}")
+    except HTTPException as exc:
+        failure_detail = str(exc.detail)
+        if allow_fallback:
+            insight_text = _build_deterministic_fallback_insight(role, evidence)
+        else:
+            raise
 
     if not insight_text:
-        raise HTTPException(status_code=502, detail=f"openclaw_agent_missing_insight: {runtime_agent_id}")
+        if allow_fallback:
+            insight_text = _build_deterministic_fallback_insight(role, evidence)
+        else:
+            raise HTTPException(status_code=502, detail=f"openclaw_agent_missing_insight: {runtime_agent_id}")
 
     return {
         "agent_id": agent_id,
         "role": role,
         "insight": insight_text,
         "evidence": evidence,
+        "source": execution_mode,
+        "warning": failure_detail or None,
     }
 
 
