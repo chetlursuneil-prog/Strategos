@@ -26,7 +26,14 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 set -a
-source "$ENV_FILE"
+while IFS='=' read -r key value; do
+  key="${key%$'\r'}"
+  value="${value%$'\r'}"
+  if [ -z "$key" ] || [[ "$key" =~ ^\s*# ]]; then
+    continue
+  fi
+  export "$key=$value"
+done < "$ENV_FILE"
 set +a
 
 if [ -z "${DATABASE_URL:-}" ]; then
@@ -51,7 +58,7 @@ After=network-online.target
 Type=simple
 WorkingDirectory=%h/strategos-backend
 EnvironmentFile=%h/.config/strategos/strategos.env
-ExecStart=%h/strategos-backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+ExecStart=%h/strategos-backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=2
 
