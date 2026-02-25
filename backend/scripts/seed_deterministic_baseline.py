@@ -137,6 +137,26 @@ async def main():
                 "impact": "10",
                 "desc": "Technical debt exposure high",
             },
+            "revenue_erosion": {
+                "expr": "revenue < 900",
+                "impact": "9",
+                "desc": "Revenue baseline has fallen below expected operating floor",
+            },
+            "cost_revenue_imbalance": {
+                "expr": "cost > (revenue * 0.78)",
+                "impact": "11",
+                "desc": "Operating cost-to-revenue ratio indicates structural inefficiency",
+            },
+            "margin_debt_double_stress": {
+                "expr": "(margin < 0.15) and (technical_debt > 55)",
+                "impact": "14",
+                "desc": "Weak margin combined with elevated technical debt increases fragility",
+            },
+            "margin_cost_stress": {
+                "expr": "(margin < 0.18) and (cost > 180)",
+                "impact": "8",
+                "desc": "Subscale margin with high operating cost raises execution risk",
+            },
         }
 
         for rname, cfg in rules.items():

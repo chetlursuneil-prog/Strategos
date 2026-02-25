@@ -750,6 +750,14 @@ export default function WorkspacePage() {
     handleMessage(input);
   };
 
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (!input.trim() || loading || phase === "confirming" || phase === "analyzing") return;
+      handleMessage(input);
+    }
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)]">
       {/* Header */}
@@ -807,10 +815,10 @@ export default function WorkspacePage() {
 
       {/* Input */}
       <form onSubmit={handleSubmit} className="mt-3 flex gap-3">
-        <input
-          type="text"
+        <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleInputKeyDown}
           placeholder={
             phase === "intro"
               ? "Describe the company or situation…"
@@ -820,7 +828,8 @@ export default function WorkspacePage() {
               ? "Ask a follow-up or describe a new scenario…"
               : "…"
           }
-          className="flex-1 bg-[#0a0f1c] border border-[#1e293b] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/40 transition-colors"
+          rows={3}
+          className="flex-1 bg-[#0a0f1c] border border-[#1e293b] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/40 transition-colors resize-y min-h-[92px]"
           disabled={loading || phase === "confirming" || phase === "analyzing"}
         />
         <button
