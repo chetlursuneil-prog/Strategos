@@ -688,7 +688,7 @@ def _clause_to_expression(clause: str) -> str:
     # Example: cost greater than 75 percent of revenue -> cost > (revenue * 0.75)
     for op, op_pat in comp_ops:
         m = re.search(
-            rf"\b([a-z_][a-z0-9_]*)\b\s*(?:is\s+)?{op_pat}\s*([\d.,]+)\s*(%|percent)?\s+of\s+\b([a-z_][a-z0-9_]*)\b",
+            rf"\b([a-z_][a-z0-9_]*)\b\s*(?:(?:is|are)\s+)?{op_pat}\s*([\d.,]+)\s*(%|percent)?\s+of\s+\b([a-z_][a-z0-9_]*)\b",
             c,
             flags=re.IGNORECASE,
         )
@@ -714,7 +714,7 @@ def _clause_to_expression(clause: str) -> str:
     # Example: margin below 12 percent / cost > 220
     for op, op_pat in comp_ops:
         m = re.search(
-            rf"\b([a-z_][a-z0-9_]*)\b\s*(?:is\s+)?{op_pat}\s*([\d.,]+)\s*(%|percent)?",
+            rf"\b([a-z_][a-z0-9_]*)\b\s*(?:(?:is|are)\s+)?{op_pat}\s*([\d.,]+)\s*(%|percent)?",
             c,
             flags=re.IGNORECASE,
         )
