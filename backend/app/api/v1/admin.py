@@ -685,6 +685,32 @@ def _clause_to_expression(clause: str) -> str:
         ("<", r"(?:<|less\s+than|below|under|falls?\s+below|drops?\s+below)"),
     ]
 
+    # Example: cost is 20% higher than revenue -> cost > (revenue * 1.2)
+    m = re.search(
+        r"\b([a-z_][a-z0-9_]*)\b\s+(?:is|are)?\s*([\d.,]+)\s*(%|percent)\s+(higher|more)\s+than\s+\b([a-z_][a-z0-9_]*)\b",
+        c,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        left = m.group(1)
+        pct = _parse_number(m.group(2))
+        right = m.group(5)
+        factor = 1.0 + (pct / 100.0)
+        return f"{left} > ({right} * {_num_str(factor)})"
+
+    # Example: margin is 10% lower than target_margin -> margin < (target_margin * 0.9)
+    m = re.search(
+        r"\b([a-z_][a-z0-9_]*)\b\s+(?:is|are)?\s*([\d.,]+)\s*(%|percent)\s+(lower|less)\s+than\s+\b([a-z_][a-z0-9_]*)\b",
+        c,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        left = m.group(1)
+        pct = _parse_number(m.group(2))
+        right = m.group(5)
+        factor = max(0.0, 1.0 - (pct / 100.0))
+        return f"{left} < ({right} * {_num_str(factor)})"
+
     # Example: cost greater than 75 percent of revenue -> cost > (revenue * 0.75)
     for op, op_pat in comp_ops:
         m = re.search(
@@ -753,6 +779,18 @@ def _nl_to_impact(text: str) -> str:
     m = re.search(r'(?:state[_\s]*impact|impact|score)\s*(?:to\s*)?([+-]?\s*[\d.]+)', t)
     if m:
         return m.group(1).replace(' ', '')
+
+    m = re.search(r'(?:increase|raise|add|boost|up)\s+(?:impact|score)?\s*(?:by\s*)?([\d.]+)\s*(?:points?)?', t)
+    if m:
+        return f"+{m.group(1)}"
+
+    m = re.search(r'(?:decrease|reduce|lower|subtract|drop|down)\s+(?:impact|score)?\s*(?:by\s*)?([\d.]+)\s*(?:points?)?', t)
+    if m:
+        return f"-{m.group(1)}"
+
+    m = re.search(r'(?:drops?|falls?|declines?)\s+by\s*([\d.]+)\s*(?:points?)?', t)
+    if m:
+        return f"-{m.group(1)}"
 
     m = re.search(r'(?:add|increase|boost)\s*(?:by\s*)?([\d.]+)', t)
     if m:
