@@ -36,8 +36,8 @@ _PATTERNS: List[Tuple[str, str, float]] = [
     (r"(?:\$\s*)?([\d,.]+)\s*(?:m|million)\b(?:[^\.\n]{0,40})?(?:revenue|turnover|sales)", "revenue", 1.0),
     (r"(?:revenue|turnover|sales)\s*(?:of|at|around|≈|~|is|=|:)?\s*\$?\s*([\d,.]+)\s*(bn|billion|b|m|million)?", "revenue", 1.0),
 
-    (r"(?:\$\s*)?([\d,.]+)\s*(?:bn|billion|b)\b(?:[^\.\n]{0,40})?(?:cost|opex|expenditure|capex)", "cost", 1000.0),
-    (r"(?:\$\s*)?([\d,.]+)\s*(?:m|million)\b(?:[^\.\n]{0,40})?(?:cost|opex|expenditure|capex)", "cost", 1.0),
+    (r"(?:\$\s*)?([\d,.]+)\s*(?:bn|billion|b)\s*(?:annual\s+|total\s+|operating\s+)?(?:costs?|opex|expenditure|capex)\b", "cost", 1000.0),
+    (r"(?:\$\s*)?([\d,.]+)\s*(?:m|million)\s*(?:annual\s+|total\s+|operating\s+)?(?:costs?|opex|expenditure|capex)\b", "cost", 1.0),
     (r"(?:cost|opex|expenditure|capex|operating\s+costs?)\s*(?:of|at|around|≈|~|is|=|:)?\s*\$?\s*([\d,.]+)\s*(bn|billion|b|m|million)?", "cost", 1.0),
 
     # profitability / debt

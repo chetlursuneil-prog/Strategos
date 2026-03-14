@@ -120,7 +120,7 @@ function parseMagnitude(num: string, unit: string): number {
 }
 
 function extractFromText(text: string, standaloneTargetField?: DataField): Partial<CollectedData> {
-  const t = text.toLowerCase().replace(/,/g, "");
+  const t = text.toLowerCase();
   const out: Partial<CollectedData> = {};
 
   // ── Revenue: only extract when revenue context is present ──
@@ -129,6 +129,7 @@ function extractFromText(text: string, standaloneTargetField?: DataField): Parti
     /\brevenue\b[^\d$.\n]{0,20}\$?\s*(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)?/i,
     /\$\s*(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)?\s*(?:in\s+)?revenue/i,
     /(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)?\s*(?:in\s+)?(?:revenue|turnover|sales)/i,
+    /\brevenue\s*[:=]\s*\$?\s*(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)?/i,
   ];
   for (const p of revContextPatterns) {
     const m = t.match(p);
@@ -138,7 +139,9 @@ function extractFromText(text: string, standaloneTargetField?: DataField): Parti
   // ── Cost: only extract when cost context is present ──
   const costContextPatterns = [
     /(?:operating\s+)?costs?\s+(?:at|of|around|is|are)\s+\$?\s*(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)?/i,
-    /\$?\s*(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)?\s*(?:in\s+)?(?:operating\s+)?costs?/i,
+    /\b(?:operating\s+)?costs?\s*[:=]\s*\$?\s*(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)?/i,
+    /\b(?:operating\s+)?costs?\b[^\d$.\n]{0,20}\$?\s*(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)?/i,
+    /\$?\s*(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)\s+(?:operating\s+)?costs?\b/i,
     /(?:expenses?|opex|expenditure)\s+(?:of|at|around|is)?\s*\$?\s*(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)?/i,
     /\$?\s*(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)\s+(?:in\s+)?(?:costs?|opex|expenses?)/i,
   ];
@@ -162,7 +165,7 @@ function extractFromText(text: string, standaloneTargetField?: DataField): Parti
   const marginPatterns = [
     /margin\s*(?:at|of|around|is|:)?\s*(\d+(?:\.\d+)?)\s*%?/i,
     /(\d+(?:\.\d+)?)\s*%\s*(?:operating\s+)?margin/i,
-    /(\d+(?:\.\d+)?)\s*(?:%|percent)\s*(?:margin)?/i,
+    /(?:operating\s+)?margin\s*[:=]\s*(\d+(?:\.\d+)?)\s*(?:%|percent)?/i,
   ];
   for (const p of marginPatterns) {
     const m = t.match(p);
@@ -184,10 +187,10 @@ function extractFromText(text: string, standaloneTargetField?: DataField): Parti
 
   // ── Technical debt keyword fallback ──
   if (out.technicalDebt === undefined) {
-    if (/very\s+high\s+(?:technical\s+)?d(?:ebt|et)|extremely\s+high\s+d(?:ebt|et)|huge\s+(?:technical\s+)?d(?:ebt|et)/.test(t)) out.technicalDebt = 92;
-    else if (/high\s+(?:technical\s+)?d(?:ebt|et)|significant\s+(?:technical\s+)?d(?:ebt|et)|heavy\s+(?:technical\s+)?d(?:ebt|et)/.test(t)) out.technicalDebt = 78;
-    else if (/moderate\s+(?:technical\s+)?d(?:ebt|et)|medium\s+(?:technical\s+)?d(?:ebt|et)|some\s+(?:technical\s+)?d(?:ebt|et)/.test(t)) out.technicalDebt = 50;
-    else if (/low\s+(?:technical\s+)?d(?:ebt|et)|minimal\s+(?:technical\s+)?d(?:ebt|et)|little\s+(?:technical\s+)?d(?:ebt|et)|clean\s+stack/.test(t)) out.technicalDebt = 20;
+    if (/very\s+high\s+(?:technical\s+)?d(?:ebt|et)|(?:technical\s+)?d(?:ebt|et)\s*(?:is|at|around|:)?\s*very\s+high|extremely\s+high\s+d(?:ebt|et)|huge\s+(?:technical\s+)?d(?:ebt|et)/.test(t)) out.technicalDebt = 92;
+    else if (/high\s+(?:technical\s+)?d(?:ebt|et)|(?:technical\s+)?d(?:ebt|et)\s*(?:is|at|around|:)?\s*high|significant\s+(?:technical\s+)?d(?:ebt|et)|heavy\s+(?:technical\s+)?d(?:ebt|et)/.test(t)) out.technicalDebt = 78;
+    else if (/moderate\s+(?:technical\s+)?d(?:ebt|et)|(?:technical\s+)?d(?:ebt|et)\s*(?:is|at|around|:)?\s*moderate|medium\s+(?:technical\s+)?d(?:ebt|et)|some\s+(?:technical\s+)?d(?:ebt|et)/.test(t)) out.technicalDebt = 50;
+    else if (/low\s+(?:technical\s+)?d(?:ebt|et)|(?:technical\s+)?d(?:ebt|et)\s*(?:is|at|around|:)?\s*low|minimal\s+(?:technical\s+)?d(?:ebt|et)|little\s+(?:technical\s+)?d(?:ebt|et)|clean\s+stack/.test(t)) out.technicalDebt = 20;
   }
 
   return out;
@@ -208,10 +211,10 @@ function inferFromContext(text: string): Partial<CollectedData> {
   else if (/healthy\s+margin|strong\s+margin|high\s+margin|good\s+margin/.test(t)) out.margin = 28;
 
   // Technical debt from language
-  if (/huge\s+tech\s+debt|massive\s+tech\s+debt|legacy\s+(?:stack|systems?)|old\s+(?:infrastructure|system)|heavily\s+(?:outdated|legacy)/.test(t)) out.technicalDebt = 88;
-  else if (/significant\s+tech\s+debt|high\s+tech\s+debt|lots\s+of\s+tech\s+debt/.test(t)) out.technicalDebt = 72;
-  else if (/some\s+tech\s+debt|moderate\s+tech\s+debt/.test(t)) out.technicalDebt = 48;
-  else if (/modern\s+stack|cloud.native|clean\s+(?:code|stack)|minimal\s+(?:debt|legacy)/.test(t)) out.technicalDebt = 18;
+  if (/huge\s+(?:tech|technical)\s+d(?:ebt|et)|massive\s+(?:tech|technical)\s+d(?:ebt|et)|(?:technical\s+)?d(?:ebt|et)\s*(?:is|at|around|:)?\s*very\s+high|legacy\s+(?:stack|systems?)|old\s+(?:infrastructure|system)|heavily\s+(?:outdated|legacy)/.test(t)) out.technicalDebt = 88;
+  else if (/significant\s+(?:tech|technical)\s+d(?:ebt|et)|high\s+(?:tech|technical)\s+d(?:ebt|et)|(?:technical\s+)?d(?:ebt|et)\s*(?:is|at|around|:)?\s*high|lots\s+of\s+(?:tech|technical)\s+d(?:ebt|et)/.test(t)) out.technicalDebt = 72;
+  else if (/some\s+(?:tech|technical)\s+d(?:ebt|et)|moderate\s+(?:tech|technical)\s+d(?:ebt|et)|(?:technical\s+)?d(?:ebt|et)\s*(?:is|at|around|:)?\s*moderate/.test(t)) out.technicalDebt = 48;
+  else if (/modern\s+stack|cloud.native|clean\s+(?:code|stack)|minimal\s+(?:debt|legacy)|(?:technical\s+)?d(?:ebt|et)\s*(?:is|at|around|:)?\s*low/.test(t)) out.technicalDebt = 18;
 
   // Cost pressure from language
   if (/huge\s+opex|massive\s+opex|very\s+high\s+costs?|enormous\s+costs?|bloated\s+costs?|high\s+opex/.test(t)) {

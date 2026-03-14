@@ -954,7 +954,7 @@ async def _run_chain_step(
 
     timeout_sec = int(os.getenv("OPENCLAW_AGENT_TIMEOUT_SECONDS", "120"))
     allow_fallback = _env_flag("OPENCLAW_ALLOW_DETERMINISTIC_FALLBACK", default=True)
-    remote_retries = _env_int("OPENCLAW_REMOTE_RETRIES", default=1, minimum=0, maximum=5)
+    remote_retries = _env_int("OPENCLAW_REMOTE_RETRIES", default=0, minimum=0, maximum=5)
     execution_mode = os.getenv("OPENCLAW_EXECUTION_MODE", "remote_http").strip().lower()
 
     handoff_inputs = _build_step_inputs(step_id, ceo_request, fixed_context, history)
@@ -1131,7 +1131,7 @@ async def _build_agent_insight(agent_id: str, role: str, snapshot: Dict[str, Any
 
     insight_text = ""
     failure_detail = ""
-    remote_retries = _env_int("OPENCLAW_REMOTE_RETRIES", default=1, minimum=0, maximum=5)
+    remote_retries = _env_int("OPENCLAW_REMOTE_RETRIES", default=0, minimum=0, maximum=5)
     attempt = 0
 
     while True:
