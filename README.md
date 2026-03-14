@@ -78,6 +78,9 @@ flowchart LR
   INTAKE --> DET
   ENGINE --> DET
   ADV --> DET
+  ADV --> BRIDGE
+  BRIDGE --> AGENTS
+  AGENTS --> ADV
 
   DET --> STATE
   DET --> ACTIONS
@@ -96,15 +99,18 @@ flowchart LR
 
 ## Runtime Flows
 
+Both channels use the same advisory agent chain when execution mode is `integrated`.
+
 ### 1) Strategos web flow
 
 1. User opens workspace and submits natural language context.
 2. Frontend calls `POST /api/v1/intake`.
 3. Backend extracts/normalizes metrics and runs deterministic engine.
 4. Snapshot is stored in `transformation_sessions`.
-5. Frontend requests advisory outputs from `/api/v1/advisory/skills/*`.
-6. Frontend renders state, score, risk detail, roadmap, and agent insights.
-7. User can export PDF/CSV via `/api/v1/reports/{session_id}`.
+5. Frontend calls `GET /api/v1/advisory/skills/board_insights/{session_id}`.
+6. Backend invokes the OpenClaw advisory agents in cumulative chain order.
+7. Frontend renders state, score, risk detail, roadmap, and agent insights.
+8. User can export PDF/CSV via `/api/v1/reports/{session_id}`.
 
 ### 2) OpenClaw/Telegram flow
 
@@ -119,6 +125,8 @@ flowchart LR
    - `financial_impact_advisor`
    - `synthesis_advisor`
 5. Final synthesis is returned to Telegram/web.
+
+If mode is switched to `strategos-only`, both channels skip OpenClaw calls and use deterministic fallback narratives.
 
 ## Deterministic and Agentic Design
 
