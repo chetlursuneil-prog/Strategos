@@ -41,13 +41,13 @@ flowchart LR
   end
 
   subgraph API[Backend - FastAPI]
-    AUTH[/api/v1/auth/*]
-    INTAKE[/api/v1/intake]
-    ENGINE[/api/v1/engine/run]
-    ADV[/api/v1/advisory/skills/*]
-    REPORTS[/api/v1/reports/{id}]
-    RULES[/api/v1/rules*]
-    SESS[/api/v1/sessions*]
+    AUTH["Auth APIs"]
+    INTAKE["Intake API"]
+    ENGINE["Engine Run API"]
+    ADV["Advisory Skill APIs"]
+    REPORTS["Reports API"]
+    RULES["Rules APIs"]
+    SESS["Sessions APIs"]
   end
 
   subgraph CORE[Deterministic Core]
