@@ -142,3 +142,30 @@ class AuditLog(Base):
     action = Column(String(255), nullable=False)
     payload = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AppUser(Base):
+    __tablename__ = "app_users"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    email = Column(String(255), nullable=False, unique=True)
+    name = Column(String(255), nullable=False)
+    role = Column(String(32), nullable=False, default="analyst")
+    requested_role = Column(String(32), nullable=False, default="analyst")
+    approval_status = Column(String(32), nullable=False, default="pending")
+    email_verified = Column(Boolean, default=False, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AuthToken(Base):
+    __tablename__ = "auth_tokens"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("app_users.id"), nullable=False)
+    purpose = Column(String(64), nullable=False)  # verify_email | reset_password
+    token_hash = Column(String(128), nullable=False, unique=True)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

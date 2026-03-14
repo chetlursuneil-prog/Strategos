@@ -80,6 +80,27 @@ Pass criteria:
 
 If all three lines appear, you can test immediately with Sara in Telegram.
 
+## OpenClaw Canvas UI: secure context requirement
+
+If you open Canvas using `http://<public-ip>:18789`, browser security can show:
+- `disconnected (1008): control ui requires HTTPS or localhost (secure context)`
+- `Health Offline` and `0 agents`
+
+Use localhost tunnel instead (recommended):
+
+```powershell
+cd backend
+.\scripts\openclaw_dashboard_tunnel.ps1 -KeyPath <PATH_TO_PEM> -RemoteHost <OPENCLAW_EC2_IP>
+```
+
+Then open:
+
+```text
+http://localhost:18789/__openclaw__/canvas/agents
+```
+
+This avoids the secure-context block and shows real gateway health/agents.
+
 ## Isolation policy (important)
 
 - Do not place non-STRATEGOS skills under `strategos-core`.

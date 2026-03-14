@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 import ast
 import json
 import uuid
@@ -13,6 +13,8 @@ ALLOWED_AST_NODES = {
     ast.BoolOp,
     ast.BinOp,
     ast.UnaryOp,
+    ast.UAdd,
+    ast.USub,
     ast.Compare,
     ast.Name,
     ast.Load,
@@ -119,11 +121,36 @@ async def run_deterministic_engine(db: AsyncSession, model_version_id: Optional[
         except Exception:
             return {"error": "invalid_model_version_id", "message": "model_version_id must be a UUID"}
         q = select(models.ModelVersion).where(models.ModelVersion.id == mv_id)
+        res = await db.execute(q)
+        mv = res.scalars().first()
     else:
-        q = select(models.ModelVersion).where(models.ModelVersion.is_active == True).limit(1)
-
-    res = await db.execute(q)
-    mv = res.scalars().first()
+        # Prefer the active model version with the most active rules so that
+        # deterministic behavior is driven by the richest configured rule-pack.
+        q = select(models.ModelVersion).where(models.ModelVersion.is_active == True)
+        res = await db.execute(q)
+        active_versions = res.scalars().all()
+        if not active_versions:
+            mv = None
+        elif len(active_versions) == 1:
+            mv = active_versions[0]
+        else:
+            ranked: List[Tuple[int, Any]] = []
+            for candidate in active_versions:
+                rq = select(models.Rule).where(
+                    models.Rule.model_version_id == candidate.id,
+                    models.Rule.is_active == True,
+                )
+                rr = await db.execute(rq)
+                rule_count = len(rr.scalars().all())
+                ranked.append((rule_count, candidate))
+            ranked.sort(
+                key=lambda item: (
+                    item[0],
+                    item[1].updated_at or item[1].created_at,
+                ),
+                reverse=True,
+            )
+            mv = ranked[0][1]
 
     if mv is None:
         return {"error": "no_model_version", "message": "No active ModelVersion found"}
@@ -320,11 +347,18 @@ async def run_deterministic_engine(db: AsyncSession, model_version_id: Optional[
     # Calibrated state score to avoid over-classifying every scenario as CRITICAL.
     # State should be driven primarily by rule triggers + impacts, with weighted input
     # score acting as a softer secondary signal.
-    state_score = max(0.0, weighted_input_score) * 0.1 + rule_impact_score + (triggered_count * 20.0)
+    state_score = max(0.0, weighted_input_score) * 0.1 + rule_impact_score + (triggered_count * 25.0)
 
-    # Determine state via tenant-scoped StateThreshold using calibrated state_score
+    # Determine state via tenant-scoped StateThreshold using calibrated state_score.
+    # If tenant thresholds are missing, use deterministic fallback thresholds.
     state = "NORMAL"
     try:
+        fallback_thresholds: List[Tuple[str, float]] = [
+            ("CRITICAL_ZONE", 85.0),
+            ("ELEVATED_RISK", 40.0),
+            ("NORMAL", 0.0),
+        ]
+
         thresholds_q = (
             select(models.StateThreshold)
             .where(models.StateThreshold.tenant_id == mv.tenant_id)
@@ -332,20 +366,31 @@ async def run_deterministic_engine(db: AsyncSession, model_version_id: Optional[
         th_res = await db.execute(thresholds_q)
         thresholds = th_res.scalars().all()
 
-        matches = []
+        state_defs_q = select(models.StateDefinition).where(models.StateDefinition.tenant_id == mv.tenant_id)
+        sd_res = await db.execute(state_defs_q)
+        state_defs = sd_res.scalars().all()
+        state_name_by_id = {str(sd.id): sd.name for sd in state_defs}
+
+        effective_thresholds: List[Tuple[str, float]] = []
         for t in thresholds:
             try:
                 threshold_value = float(t.threshold)
             except Exception:
                 continue
+            name = state_name_by_id.get(str(t.state_definition_id))
+            if not name:
+                continue
+            effective_thresholds.append((name, threshold_value))
 
-            if state_score >= threshold_value:
-                sd = await db.get(models.StateDefinition, t.state_definition_id)
-                if sd and sd.tenant_id == mv.tenant_id:
-                    matches.append((sd.name, threshold_value))
+        if not effective_thresholds:
+            effective_thresholds = fallback_thresholds
 
+        matches = [
+            (name, threshold)
+            for name, threshold in effective_thresholds
+            if state_score >= threshold
+        ]
         if matches:
-            # choose highest threshold match first, with severity override for CRITICAL/ELEVATED
             matches.sort(key=lambda x: x[1], reverse=True)
             names = [m[0] for m in matches]
             if "CRITICAL_ZONE" in names:

@@ -11,6 +11,7 @@ const API = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api/v1";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 type Phase = "intro" | "gathering" | "confirming" | "analyzing" | "results" | "followup";
+type AssumptionProfile = "balanced" | "growth" | "stressed" | "none";
 
 interface CollectedData {
   companyContext?: string;
@@ -37,6 +38,8 @@ interface SnapshotType {
 interface AnalysisResult {
   session_id: string;
   extracted_input: Record<string, number>;
+  assumption_profile_used?: string;
+  metric_source?: Record<string, string>;
   snapshot: SnapshotType;
   openclaw_insights?: Array<{
     agent_id: string;
@@ -69,6 +72,45 @@ interface Message {
 
 type DataField = keyof Omit<CollectedData, "companyContext">;
 
+function countProvidedFields(d: CollectedData): number {
+  return ["revenue", "cost", "margin", "technicalDebt"].reduce((count, key) => {
+    return typeof d[key as keyof CollectedData] === "number" ? count + 1 : count;
+  }, 0);
+}
+
+function buildInputText(data: CollectedData): string {
+  const lines: string[] = [data.companyContext || "Enterprise diagnostic"];
+  if (typeof data.revenue === "number") lines.push(`Revenue: ${data.revenue}M`);
+  if (typeof data.cost === "number") lines.push(`Operating costs: ${data.cost}M`);
+  if (typeof data.margin === "number") lines.push(`Margin: ${data.margin}%`);
+  if (typeof data.technicalDebt === "number") lines.push(`Technical debt: ${data.technicalDebt}%`);
+  return lines.join(". ");
+}
+
+function describeCollectedInput(data: CollectedData): string {
+  const lines: string[] = [];
+  if (typeof data.revenue === "number") lines.push(`• Revenue: ${formatCurrency(data.revenue)}`);
+  if (typeof data.cost === "number") lines.push(`• Operating costs: ${formatCurrency(data.cost)}`);
+  if (typeof data.margin === "number") lines.push(`• Margin: ${data.margin}%`);
+  if (typeof data.technicalDebt === "number") lines.push(`• Technical debt: ${data.technicalDebt}%`);
+  if (lines.length === 0) lines.push("• No numeric fields provided");
+  return lines.join("\n");
+}
+
+function profileLabel(profile: AssumptionProfile): string {
+  if (profile === "none") return "no defaults";
+  return profile;
+}
+
+function missingFieldPolicy(profile: AssumptionProfile): string {
+  if (profile === "none") return "Missing fields will remain unset (no defaults).";
+  return `Missing fields will use ${profile} deterministic defaults.`;
+}
+
+function wantsImmediateAnalysis(text: string): boolean {
+  return /(run|analy[sz]e|diagnostic|go ahead|proceed|continue|use defaults|skip)/i.test(text || "");
+}
+
 /* ─── Extraction helper ─────────────────────────────────────────────── */
 function parseMagnitude(num: string, unit: string): number {
   const v = parseFloat(num);
@@ -84,7 +126,7 @@ function extractFromText(text: string, standaloneTargetField?: DataField): Parti
   // ── Revenue: only extract when revenue context is present ──
   // Patterns that require explicit revenue context first
   const revContextPatterns = [
-    /revenue[^\d$]*\$?\s*(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)?/i,
+    /\brevenue\b[^\d$.\n]{0,20}\$?\s*(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)?/i,
     /\$\s*(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)?\s*(?:in\s+)?revenue/i,
     /(\d+(?:\.\d+)?)\s*(m|million|bn|billion|b)?\s*(?:in\s+)?(?:revenue|turnover|sales)/i,
   ];
@@ -132,8 +174,8 @@ function extractFromText(text: string, standaloneTargetField?: DataField): Parti
 
   // ── Technical debt: numeric ──
   const debtPatterns = [
-    /(?:technical\s+)?debt\s*(?:at|of|around|is|:)?\s*(\d+(?:\.\d+)?)\s*%?/i,
-    /(\d+(?:\.\d+)?)\s*%\s*(?:technical\s+)?debt/i,
+    /(?:technical\s+)?d(?:ebt|et)\s*(?:at|of|around|is|:)?\s*(\d+(?:\.\d+)?)\s*%?/i,
+    /(\d+(?:\.\d+)?)\s*%\s*(?:technical\s+)?d(?:ebt|et)/i,
   ];
   for (const p of debtPatterns) {
     const m = t.match(p);
@@ -142,10 +184,10 @@ function extractFromText(text: string, standaloneTargetField?: DataField): Parti
 
   // ── Technical debt keyword fallback ──
   if (out.technicalDebt === undefined) {
-    if (/very\s+high\s+(?:technical\s+)?debt|extremely\s+high\s+debt|huge\s+(?:technical\s+)?debt/.test(t)) out.technicalDebt = 92;
-    else if (/high\s+(?:technical\s+)?debt|significant\s+(?:technical\s+)?debt|heavy\s+(?:technical\s+)?debt/.test(t)) out.technicalDebt = 78;
-    else if (/moderate\s+(?:technical\s+)?debt|medium\s+(?:technical\s+)?debt|some\s+(?:technical\s+)?debt/.test(t)) out.technicalDebt = 50;
-    else if (/low\s+(?:technical\s+)?debt|minimal\s+(?:technical\s+)?debt|little\s+(?:technical\s+)?debt|clean\s+stack/.test(t)) out.technicalDebt = 20;
+    if (/very\s+high\s+(?:technical\s+)?d(?:ebt|et)|extremely\s+high\s+d(?:ebt|et)|huge\s+(?:technical\s+)?d(?:ebt|et)/.test(t)) out.technicalDebt = 92;
+    else if (/high\s+(?:technical\s+)?d(?:ebt|et)|significant\s+(?:technical\s+)?d(?:ebt|et)|heavy\s+(?:technical\s+)?d(?:ebt|et)/.test(t)) out.technicalDebt = 78;
+    else if (/moderate\s+(?:technical\s+)?d(?:ebt|et)|medium\s+(?:technical\s+)?d(?:ebt|et)|some\s+(?:technical\s+)?d(?:ebt|et)/.test(t)) out.technicalDebt = 50;
+    else if (/low\s+(?:technical\s+)?d(?:ebt|et)|minimal\s+(?:technical\s+)?d(?:ebt|et)|little\s+(?:technical\s+)?d(?:ebt|et)|clean\s+stack/.test(t)) out.technicalDebt = 20;
   }
 
   return out;
@@ -259,6 +301,8 @@ function formatCurrency(val: number): string {
 function AnalysisNarrative({ result }: { result: AnalysisResult }) {
   const snap = result.snapshot;
   const engineInput = result.extracted_input || {};
+  const metricSource = result.metric_source || {};
+  const profileUsed = result.assumption_profile_used || "balanced";
   const openclawInsights = result.openclaw_insights || [];
   const state = snap.state;
   const sb = snap.score_breakdown || { total_score: 0, coefficient_contributions: [] };
@@ -360,6 +404,16 @@ function AnalysisNarrative({ result }: { result: AnalysisResult }) {
     status: "pending" as const,
   }));
 
+  const sourceTag = (metric: string) => {
+    const source = metricSource[metric];
+    if (!source) return "";
+    if (source.startsWith("profile_default:")) return " (default)";
+    if (source === "qualitative_override") return " (inferred)";
+    if (source === "parsed_text") return " (parsed)";
+    if (source === "explicit_input") return " (provided)";
+    return ` (${source})`;
+  };
+
   return (
     <div className="space-y-7 mt-3">
       {/* Overall state verdict */}
@@ -372,12 +426,12 @@ function AnalysisNarrative({ result }: { result: AnalysisResult }) {
       {/* Engine input transparency */}
       <div className="rounded-xl border border-[#1e293b] bg-[#060a14] p-4">
         <p className="text-sm font-semibold text-white">Input used by STRATEGOS engine</p>
-        <p className="text-xs text-gray-500 mt-1">These are the final normalized values processed by the deterministic run.</p>
+        <p className="text-xs text-gray-500 mt-1">Profile: {profileUsed}. These are the final normalized values processed by the deterministic run.</p>
         <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-300">
-          <p>• Revenue: {typeof engineInput.revenue === "number" ? formatCurrency(engineInput.revenue) : "n/a"}</p>
-          <p>• Operating costs: {typeof engineInput.cost === "number" ? formatCurrency(engineInput.cost) : "n/a"}</p>
-          <p>• Margin: {typeof engineInput.margin === "number" ? `${(engineInput.margin <= 1 ? engineInput.margin * 100 : engineInput.margin).toFixed(2)}%` : "n/a"}</p>
-          <p>• Technical debt: {typeof engineInput.technical_debt === "number" ? `${engineInput.technical_debt.toFixed(2)}%` : "n/a"}</p>
+          <p>• Revenue: {typeof engineInput.revenue === "number" ? formatCurrency(engineInput.revenue) : "n/a"}{sourceTag("revenue")}</p>
+          <p>• Operating costs: {typeof engineInput.cost === "number" ? formatCurrency(engineInput.cost) : "n/a"}{sourceTag("cost")}</p>
+          <p>• Margin: {typeof engineInput.margin === "number" ? `${(engineInput.margin <= 1 ? engineInput.margin * 100 : engineInput.margin).toFixed(2)}%` : "n/a"}{sourceTag("margin")}</p>
+          <p>• Technical debt: {typeof engineInput.technical_debt === "number" ? `${engineInput.technical_debt.toFixed(2)}%` : "n/a"}{sourceTag("technical_debt")}</p>
         </div>
       </div>
 
@@ -525,6 +579,7 @@ export default function WorkspacePage() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [assumptionProfile, setAssumptionProfile] = useState<AssumptionProfile>("balanced");
   const endRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
@@ -539,13 +594,7 @@ export default function WorkspacePage() {
     setPhase("analyzing");
     setLoading(true);
     try {
-      const bodyText = [
-        data.companyContext || "Enterprise diagnostic",
-        `Revenue: ${data.revenue}M`,
-        `Operating costs: ${data.cost}M`,
-        `Margin: ${data.margin}%`,
-        `Technical debt: ${data.technicalDebt}%`,
-      ].join(". ");
+      const bodyText = buildInputText(data);
 
       const res = await fetch(`${API}/intake`, {
         method: "POST",
@@ -553,6 +602,7 @@ export default function WorkspacePage() {
         body: JSON.stringify({
           tenant_id: user!.tenantId,
           model_version_id: "",
+          assumption_profile: assumptionProfile,
           text: bodyText,
         }),
       });
@@ -587,6 +637,8 @@ export default function WorkspacePage() {
           result: {
             session_id: d.session_id,
             extracted_input: d.extracted_input,
+            assumption_profile_used: d.assumption_profile_used,
+            metric_source: d.metric_source,
             snapshot: d.snapshot,
             openclaw_insights: boardInsights,
           },
@@ -663,8 +715,8 @@ export default function WorkspacePage() {
         freshlyExtracted = { ...freshlyExtracted, ...hintedExtract };
       }
 
-      // 2. If nothing was extracted and a field was specifically asked, try bare number
-      if (Object.keys(freshlyExtracted).length === 0 && lastAskedField) {
+      // 2. If nothing was extracted, try bare numeric fallback.
+      if (Object.keys(freshlyExtracted).length === 0) {
         const bareNum = trimmed.replace(/[%$,]/g, "").trim();
         const asNumber = parseFloat(bareNum);
         if (!isNaN(asNumber) && /^\$?[\d.,]+%?$/.test(trimmed.trim())) {
@@ -686,25 +738,25 @@ export default function WorkspacePage() {
       }
 
       setCollected(updated);
-      const missing = getMissing(updated);
+      const providedCount = countProvidedFields(updated);
+      const shouldRunNow = providedCount > 0 || wantsImmediateAnalysis(trimmed) || phase === "gathering";
 
-      if (missing.length === 0) {
-        const rev = formatCurrency(updated.revenue!);
-        const cost = formatCurrency(updated.cost!);
+      if (shouldRunNow) {
         setPhase("confirming");
         setLastAskedField(undefined);
         addAdvisorMessage(
-          `Perfect — here is what I am working with:\n\n• Revenue: ${rev}\n• Operating costs: ${cost}\n• Margin: ${updated.margin}%\n• Technical debt: ${updated.technicalDebt}%\n\nRunning the diagnostic now…`,
+          `Running with the available input:\n\n${describeCollectedInput(updated)}\n\n${missingFieldPolicy(assumptionProfile)}\n\nRunning the diagnostic now…`,
           undefined,
           updated
         );
         setTimeout(() => runAnalysis(updated), 1000);
       } else {
         setPhase("gathering");
-        const nextField = missing[0];
-        setLastAskedField(nextField);
+        setLastAskedField(undefined);
         setTimeout(() => {
-          addAdvisorMessage(askForField(nextField, updated));
+          addAdvisorMessage(
+            `I can run now even without all numbers.\n\nIf you want higher precision, share any optional metrics (revenue, operating costs, margin, technical debt), or type "run now" to proceed. ${missingFieldPolicy(assumptionProfile)}`
+          );
         }, 300);
       }
 
@@ -716,7 +768,7 @@ export default function WorkspacePage() {
         freshData = { ...freshData, ...hintedFollowup };
       }
       // Bare number fallback in followup too
-      if (Object.keys(freshData).length === 0 && lastAskedField) {
+      if (Object.keys(freshData).length === 0) {
         const bareNum = trimmed.replace(/[%$,]/g, "").trim();
         const asNumber = parseFloat(bareNum);
         if (!isNaN(asNumber) && /^\$?[\d.,]+%?$/.test(trimmed.trim())) {
@@ -726,15 +778,18 @@ export default function WorkspacePage() {
       if (Object.keys(freshData).length > 0) {
         const updated: CollectedData = { ...collected, ...freshData };
         setCollected(updated);
-        const rev = formatCurrency(updated.revenue!);
-        const cost = formatCurrency(updated.cost!);
         addAdvisorMessage(
-          `Re-running the analysis with updated figures:\n\n• Revenue: ${rev}\n• Operating costs: ${cost}\n• Margin: ${updated.margin}%\n• Technical debt: ${updated.technicalDebt}%`
+          `Re-running with updated inputs:\n\n${describeCollectedInput(updated)}\n\n${missingFieldPolicy(assumptionProfile)}`
         );
         setTimeout(() => runAnalysis(updated), 800);
-      } else if (/(?:yes|please|go ahead|sure|do it)/i.test(trimmed)) {
+      } else if (/(?:yes|please|go ahead|sure|do it|run now|analyze)/i.test(trimmed)) {
         addAdvisorMessage(
-          "Describe the scenario you want to explore — for example: 'What if operating costs drop to $600M?' or 'Same company with 25% margin'. I will re-run the diagnostic immediately."
+          `Running with the latest context. ${missingFieldPolicy(assumptionProfile)}`
+        );
+        setTimeout(() => runAnalysis(collected), 600);
+      } else if (/(?:change profile|assumption profile|defaults?)/i.test(trimmed)) {
+        addAdvisorMessage(
+          "Use the Assumption Profile selector above the chat to choose Balanced, Growth, Stressed, or No defaults."
         );
       } else {
         addAdvisorMessage(
@@ -768,22 +823,37 @@ export default function WorkspacePage() {
             Your personal transformation intelligence advisor — powered by deterministic AI
           </p>
         </div>
-        {phase !== "intro" && phase !== "gathering" && (
-          <button
-            onClick={() => {
-              setPhase("intro");
-              setCollected({});
-              setLastAskedField(undefined);
-              setMessages([{
-                role: "advisor",
-                text: "Let's start a fresh diagnostic. Tell me about the company or situation you would like to evaluate.",
-              }]);
-            }}
-            className="text-xs text-gray-500 hover:text-amber-400 border border-[#1e293b] px-3 py-1.5 rounded-lg transition-colors"
-          >
-            New session
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <label className="text-[11px] text-gray-500 uppercase tracking-wider">
+            Assumption profile
+            <select
+              value={assumptionProfile}
+              onChange={(e) => setAssumptionProfile(e.target.value as AssumptionProfile)}
+              className="ml-2 bg-[#060a14] border border-[#1e293b] rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+            >
+              <option value="balanced">Balanced</option>
+              <option value="growth">Growth</option>
+              <option value="stressed">Stressed</option>
+              <option value="none">No defaults</option>
+            </select>
+          </label>
+          {phase !== "intro" && phase !== "gathering" && (
+            <button
+              onClick={() => {
+                setPhase("intro");
+                setCollected({});
+                setLastAskedField(undefined);
+                setMessages([{
+                  role: "advisor",
+                  text: "Let's start a fresh diagnostic. Tell me about the company or situation you would like to evaluate.",
+                }]);
+              }}
+              className="text-xs text-gray-500 hover:text-amber-400 border border-[#1e293b] px-3 py-1.5 rounded-lg transition-colors"
+            >
+              New session
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Messages */}

@@ -1,124 +1,241 @@
 # STRATEGOS
 
-STRATEGOS is a deterministic transformation diagnostics platform with two user channels:
+STRATEGOS is an enterprise transformation platform with two execution channels:
 
-- Web app flow (Next.js) for internal workspace and admin operations.
-- OpenClaw/Sara flow (Telegram/OpenClaw runtime) for advisory-agent orchestration.
+1. Strategos web app (Next.js + FastAPI)
+2. OpenClaw advisory agents (Telegram/OpenClaw runtime)
 
-## Architecture (current)
+It combines a deterministic scoring engine with a cumulative multi-agent advisory chain.
 
-The deployed end-to-end architecture uses 14 core components grouped across 6 layers.
+## Current Status
+
+- Deterministic engine: active
+- Web workspace: active
+- OpenClaw advisory chain: active (integrated mode)
+- Strategos-only fallback mode: active (switchable)
+- Auth (signup/login/verification/reset/admin approval): active
+- PDF/CSV report export: active
+- Payments (Stripe/Razorpay): not implemented yet (planned)
+
+## Monorepo Layout
+
+- Frontend: `frontend/` (Next.js App Router)
+- Backend: `backend/` (FastAPI + SQLAlchemy + Alembic)
+- OpenClaw integration bundle: `backend/openclaw/`
+- Deploy and ops scripts: `backend/scripts/`
+- Architecture docs: `docs/`
+
+## System Architecture
 
 ```mermaid
 flowchart LR
-	subgraph CH[Channels]
-		WEB[Web User\nfrontend/app/dashboard/workspace/page.tsx]
-		TG[Telegram User\n(OpenClaw/Sara channel)]
-	end
+  subgraph CH[User Channels]
+    WEB[Strategos Web App]
+    TG[Telegram Bot]
+  end
 
-	subgraph FE[Frontend]
-		NEXT[Next.js App\nfrontend/app/*\nfrontend/lib/api.ts]
-		ADMINUI[Admin Portal\nfrontend/app/internal/admin/page.tsx]
-	end
+  subgraph FE[Frontend - Next.js]
+    WS[Workspace UI]
+    AUTHUI[Auth + Access UI]
+    ADMINUI[Internal Admin UI]
+  end
 
-	subgraph EDGE[Edge]
-		NGINX[Nginx Reverse Proxy\n/:3000 and /api:8000]
-		TLS[Let's Encrypt TLS\ncertbot + nginx plugin]
-	end
+  subgraph API[Backend - FastAPI]
+    AUTH[/api/v1/auth/*]
+    INTAKE[/api/v1/intake]
+    ENGINE[/api/v1/engine/run]
+    ADV[/api/v1/advisory/skills/*]
+    REPORTS[/api/v1/reports/{id}]
+    RULES[/api/v1/rules*]
+    SESS[/api/v1/sessions*]
+  end
 
-	subgraph BE[Backend API (FastAPI)]
-		MAIN[Router Composition\nbackend/app/main.py]
-		INTAKE[/api/v1/intake\nbackend/app/api/v1/intake.py]
-		ADVISORY[/api/v1/advisory/skills/*\nbackend/app/api/v1/advisory.py]
-		ADMIN[/api/v1/admin/*\nbackend/app/api/v1/admin.py]
-		RULES[/api/v1/rules*\nbackend/app/api/v1/rules.py]
-		ENGINE[Deterministic Engine\nbackend/app/services/engine.py]
-	end
+  subgraph CORE[Deterministic Core]
+    DET[Deterministic Engine]
+    STATE[State Classification]
+    ACTIONS[Restructuring Actions]
+  end
 
-	subgraph OC[OpenClaw Assets]
-		OCSKILLS[Skill Contract\nbackend/openclaw/skills/strategos_skills.json]
-		OCBOARD[Board Topology\nbackend/openclaw/agents/strategos_advisory_board.json]
-		OCRUNTIME[Runtime Agents\nbackend/openclaw/agents/strategos_advisory_agents.runtime.json]
-	end
+  subgraph OC[OpenClaw Runtime]
+    BOARD[Advisory Board Topology]
+    AGENTS[Runtime Agents]
+    BRIDGE[OpenClaw Bridge/Gateway]
+  end
 
-	subgraph DATA[Data]
-		DB[(Postgres)]
-		MODELS[Models + Entities\nbackend/app/db/models.py]
-		SEED[Deterministic Seed Rules\nbackend/scripts/seed_deterministic_baseline.py]
-	end
+  subgraph DATA[Data Layer]
+    DB[(Postgres or SQLite)]
+    AUD[(Audit Logs)]
+  end
 
-	WEB --> NEXT --> NGINX --> MAIN
-	TG --> OCRUNTIME --> ADVISORY
+  WEB --> FE
+  TG --> OC
 
-	ADMINUI --> ADMIN
-	NEXT --> INTAKE
-	NEXT --> ADVISORY
+  FE --> AUTH
+  FE --> INTAKE
+  FE --> ADV
+  FE --> REPORTS
 
-	MAIN --> INTAKE
-	MAIN --> ADVISORY
-	MAIN --> ADMIN
-	MAIN --> RULES
+  INTAKE --> DET
+  ENGINE --> DET
+  ADV --> DET
 
-	INTAKE --> ENGINE
-	ADVISORY --> ENGINE
-	RULES --> DB
-	ADMIN --> DB
-	ENGINE --> DB
+  DET --> STATE
+  DET --> ACTIONS
+  DET --> DB
+  AUTH --> DB
+  RULES --> DB
+  SESS --> DB
+  REPORTS --> DB
+  DET --> AUD
 
-	ENGINE --> MODELS
-	SEED --> DB
-	OCSKILLS --> ADVISORY
-	OCBOARD --> ADVISORY
-	OCRUNTIME --> ADVISORY
-	TLS --> NGINX
+  OC --> ADV
+  BOARD --> AGENTS
+  AGENTS --> BRIDGE
+  BRIDGE --> ADV
 ```
 
-## File map (where key logic lives)
+## Runtime Flows
 
-### OpenClaw integration
+### 1) Strategos web flow
+
+1. User opens workspace and submits natural language context.
+2. Frontend calls `POST /api/v1/intake`.
+3. Backend extracts/normalizes metrics and runs deterministic engine.
+4. Snapshot is stored in `transformation_sessions`.
+5. Frontend requests advisory outputs from `/api/v1/advisory/skills/*`.
+6. Frontend renders state, score, risk detail, roadmap, and agent insights.
+7. User can export PDF/CSV via `/api/v1/reports/{session_id}`.
+
+### 2) OpenClaw/Telegram flow
+
+1. Telegram message is routed through OpenClaw.
+2. OpenClaw calls Strategos advisory skill endpoints.
+3. Strategos deterministic engine produces canonical evidence.
+4. Advisory chain runs in fixed order (cumulative handoff):
+   - `schema_extraction_agent`
+   - `strategy_advisor`
+   - `architecture_advisor`
+   - `risk_officer`
+   - `financial_impact_advisor`
+   - `synthesis_advisor`
+5. Final synthesis is returned to Telegram/web.
+
+## Deterministic and Agentic Design
+
+Strategos is built as deterministic-core + agentic-interpretation:
+
+- Deterministic core computes state, score, triggers, and actions.
+- Agents cannot overwrite deterministic facts.
+- Agents consume fixed context + step handoff history and produce structured narrative.
+- Integrated mode can call OpenClaw LLM agents.
+- Fallback mode uses deterministic narrative only.
+
+## Key API Surface
+
+- Health: `GET /api/v1/health`
+- Auth:
+  - `POST /api/v1/auth/register`
+  - `POST /api/v1/auth/login`
+  - `POST /api/v1/auth/verify-email`
+  - `POST /api/v1/auth/password/forgot`
+  - `POST /api/v1/auth/password/reset`
+  - `GET /api/v1/auth/me`
+  - Admin approvals under `/api/v1/auth/admin/*`
+- Intake and engine:
+  - `POST /api/v1/intake`
+  - `POST /api/v1/engine/run`
+- Sessions:
+  - `POST /api/v1/sessions`
+  - `GET /api/v1/sessions`
+  - `GET /api/v1/sessions/{id}/snapshots`
+  - `GET /api/v1/sessions/{id}/replay`
+- Advisory skills:
+  - `POST /api/v1/advisory/skills/create_session`
+  - `POST /api/v1/advisory/skills/run_engine`
+  - `GET /api/v1/advisory/skills/state/{session_id}`
+  - `GET /api/v1/advisory/skills/contributions/{session_id}`
+  - `GET /api/v1/advisory/skills/restructuring/{session_id}`
+  - `GET /api/v1/advisory/skills/board_insights/{session_id}`
+- Reports:
+  - `GET /api/v1/reports/{session_id}?format=pdf|csv`
+
+## Data and Database
+
+### Local development
+
+- Default DB: `sqlite+aiosqlite:///./strategos_dev.db`
+
+### Production
+
+- Recommended DB: PostgreSQL (including Supabase)
+- Async driver: `asyncpg`
+- Pooler compatibility (Supabase 6543/PgBouncer):
+  - SQLAlchemy `NullPool`
+  - prepared/statement cache disabled
+
+### Core tables
+
+- Domain: `model_versions`, `metrics`, `coefficients`, `rules`, `rule_conditions`, `rule_impacts`, `state_definitions`, `state_thresholds`, `transformation_sessions`, `audit_logs`
+- Auth: `app_users`, `auth_tokens`, `tenants`
+
+Migrations are under `backend/alembic/versions/`.
+
+## OpenClaw Integration Files
 
 - Skills contract: `backend/openclaw/skills/strategos_skills.json`
 - Advisory board topology: `backend/openclaw/agents/strategos_advisory_board.json`
-- Runtime agent profile: `backend/openclaw/agents/strategos_advisory_agents.runtime.json`
-- OpenClaw bundle guide: `backend/openclaw/README.md`
-- Bundle validator: `backend/scripts/validate_openclaw_bundle.py`
-- EC2 OpenClaw smoke test: `backend/scripts/smoke_openclaw_sara_e2e.ps1`
+- Runtime agents: `backend/openclaw/agents/strategos_advisory_agents.runtime.json`
+- Workspace skill: `backend/openclaw/workspace_skills/strategos-core/SKILL.md`
 
-### Deterministic engine and rules
+## Execution Modes (EC2)
 
-- Engine execution: `backend/app/services/engine.py`
-- Engine API endpoint: `backend/app/api/v1/engine.py`
-- Intake endpoint (text to deterministic run): `backend/app/api/v1/intake.py`
-- Advisory skill endpoints: `backend/app/api/v1/advisory.py`
-- Rules CRUD and activation: `backend/app/api/v1/rules.py`
-- NL admin command parser: `backend/app/api/v1/admin.py`
-- DB entities (rules, impacts, conditions, sessions, audit): `backend/app/db/models.py`
-- Baseline deterministic seed data: `backend/scripts/seed_deterministic_baseline.py`
+Strategos backend supports two modes:
 
-### Frontend orchestration
+1. `integrated` mode
+   - Uses OpenClaw for agent execution
+2. `strategos-only` mode
+   - Deterministic narrative fallback only
 
-- Web workspace flow: `frontend/app/dashboard/workspace/page.tsx`
-- Internal admin + CRUD flow: `frontend/app/internal/admin/page.tsx`
-- Shared frontend API client: `frontend/lib/api.ts`
+Switching scripts:
 
-## End-to-end flow summary
+- Windows wrapper: `backend/scripts/switch_strategos_mode.ps1`
+- Remote script: `backend/scripts/strategos_mode_switch.sh`
 
-### Web app path
+Example:
 
-1. User submits business context in workspace UI.
-2. Frontend calls `POST /api/v1/intake`.
-3. Backend runs deterministic engine and persists session snapshot.
-4. Frontend calls advisory skill endpoints for state/contributions/restructuring.
-5. Frontend optionally calls board insights endpoint for multi-agent insights.
+```powershell
+powershell -ExecutionPolicy Bypass -File backend/scripts/switch_strategos_mode.ps1 -Mode status -RemoteHost <STRATEGOS_EC2_IP> -KeyPath <PATH_TO_PEM>
+```
 
-### Telegram/OpenClaw path
+## OpenClaw Dashboard Access (secure context)
 
-1. User sends STRATEGOS request to Sara in Telegram.
-2. OpenClaw runtime invokes STRATEGOS advisory skills (`create_session`, `run_engine`, `fetch_*`).
-3. FastAPI advisory endpoints call deterministic engine and return structured payload.
-4. OpenClaw synthesis agent composes final board-style response.
+For browser-safe dashboard access, use local SSH tunnel:
 
-## Local development
+```powershell
+cd backend
+./scripts/openclaw_dashboard_tunnel.ps1 -KeyPath <PATH_TO_PEM> -RemoteHost <OPENCLAW_EC2_IP>
+```
+
+Then open:
+
+- `http://localhost:18889/chat?session=main`
+- `http://localhost:18889/__openclaw__/canvas/#/agents`
+
+## Reports
+
+- CSV export includes score breakdown, rule triggers, restructuring actions.
+- PDF export is generated via ReportLab with Strategos-themed styling.
+- Rule expressions are converted to plain English in exports.
+
+## Auth and Access Control
+
+- Signup with role request (`admin|analyst|viewer`)
+- Email verification tokens
+- Password reset flow
+- Tenant-scoped pending approval queue
+- Admin approve/reject endpoints and UI (`/dashboard/access`)
+
+## Local Setup
 
 ### Backend
 
@@ -128,7 +245,8 @@ python -m venv .venv
 . .venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r requirements.txt
-.\scripts\run_local.ps1
+python -m alembic -c alembic.ini upgrade head
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### Frontend
@@ -139,37 +257,44 @@ npm install
 npm run dev
 ```
 
-### Docker (optional)
+## Deployment Scripts
 
-```powershell
-docker-compose up --build
-```
+- Backend EC2 deploy: `backend/scripts/deploy_strategos_ec2.ps1`
+- OpenClaw skills deploy: `backend/scripts/deploy_openclaw_strategos_skill.ps1`
+- OpenClaw agents deploy: `backend/scripts/deploy_openclaw_strategos_agents.ps1`
+- OpenClaw E2E smoke test: `backend/scripts/smoke_openclaw_sara_e2e.ps1`
 
-## Operational checks
+## Testing
 
-Backend health:
+Backend tests live in `backend/tests/`.
 
-```powershell
-curl -sS -i http://localhost:8000/api/v1/health
-```
-
-OpenClaw bundle validation:
+Run:
 
 ```powershell
 cd backend
-python .\scripts\validate_openclaw_bundle.py
+pytest -q
 ```
 
-OpenClaw Sara E2E smoke test:
+## Payments Status
 
-```powershell
-cd backend
-.\scripts\smoke_openclaw_sara_e2e.ps1 -RemoteHost <OPENCLAW_HOST> -KeyPath <PATH_TO_PEM>
-```
+Payments are not yet implemented in code.
 
-## Detailed architecture docs
+Planned v1:
 
-- `docs/STRATEGOS_ARCHITECTURE_AND_INTERACTION.md`
-- `docs/architecture.mmd`
-- `docs/architecture_pngsafe.mmd`
+- Stripe checkout session endpoint
+- Stripe webhook handler for subscription lifecycle
+- Tenant-level plan/entitlement model
+- Billing page under dashboard
+- Usage and quota gating for advisory/intake endpoints
 
+## Documentation
+
+- Architecture and interaction details: `docs/STRATEGOS_ARCHITECTURE_AND_INTERACTION.md`
+- Mermaid source: `docs/architecture.mmd`
+- PNG-safe Mermaid: `docs/architecture_pngsafe.mmd`
+
+## Security Notes
+
+- Do not commit secrets (`.env`, API keys, PEM files).
+- Keep SSH keys outside the repo.
+- Use HTTPS in production for user-facing Strategos/OpenClaw URLs.

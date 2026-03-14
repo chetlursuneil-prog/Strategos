@@ -42,6 +42,14 @@ if 'list' not in cfg['agents'] or not isinstance(cfg['agents']['list'], list):
     }]
 existing = [a for a in cfg['agents']['list'] if isinstance(a, dict)]
 existing = [a for a in existing if not str(a.get('id','')).startswith('strategos-')]
+for a in existing:
+    if str(a.get('id', '')).strip() == 'main':
+        skills = a.get('skills')
+        if not isinstance(skills, list):
+            skills = []
+        if 'strategos-core' not in skills:
+            skills.append('strategos-core')
+        a['skills'] = skills
 for item in strategos_entries:
     existing.append({
         'id': item['id'],
@@ -56,11 +64,68 @@ cfg_path.write_text(json.dumps(cfg, indent=2) + '\n')
 for item in strategos_entries:
     ws = Path(item['workspace'])
     ws.mkdir(parents=True, exist_ok=True)
-    (ws / 'AGENTS.md').write_text('# ' + item.get('name','STRATEGOS Agent') + '\n\n' + item.get('role_prompt','') + '\n')
-    (ws / 'TOOLS.md').write_text('Use only STRATEGOS REST skills via strategos-core. No direct DB access.\n')
+    (ws / 'AGENTS.md').write_text(
+        '# ' + item.get('name','STRATEGOS Agent') + '\n\n' +
+        item.get('role_prompt','') + '\n\n' +
+        'Execution contract (strict):\n' +
+        '- You are a specialist advisor step in STRATEGOS cumulative chain orchestration.\n' +
+        '- Consume only the payload provided by the orchestrator (fixed context + handoff inputs).\n' +
+        '- Do not execute pseudo-commands in shell.\n' +
+        '- Do not execute openclaw CLI commands from inside agent task flow.\n' +
+        '- Do not call external systems beyond STRATEGOS/OpenClaw routing contract.\n' +
+        '- Return strict JSON only, matching the requested output contract fields.\n'
+    )
+    (ws / 'TOOLS.md').write_text(
+        'This workspace is used as a specialist advisory step for Strategos chain orchestration.\n' +
+        'Never run openclaw CLI inside agent flow.\n' +
+        'Do not run shell pseudo-commands.\n' +
+        'Return strict JSON only according to orchestrator contract.\n'
+    )
+
+# Telegram commonly routes to the "main" agent. Force main workspace into the
+# same deterministic STRATEGOS contract so bot replies stay consistent.
+main_ws = Path('/home/ubuntu/.openclaw/workspace')
+main_ws.mkdir(parents=True, exist_ok=True)
+(main_ws / 'AGENTS.md').write_text(
+    '# OpenClaw Main Agent (Project Router)\n\n' +
+    'You are the default Telegram-facing router for multiple projects.\n' +
+    'Current onboarded project: strategos.\n\n' +
+    'Routing contract:\n' +
+    '- If user requests STRATEGOS analysis (or no project is specified), run STRATEGOS deterministic flow.\n' +
+    '- If user references another project/app that is not onboarded yet, ask for project onboarding details (base URL, token env var, skill namespace, deterministic flow script path).\n' +
+    '- Never claim a project is connected unless deterministic connectivity is confirmed.\n\n' +
+    'Execution contract (for strategos):\n' +
+    '- Do not narrate progress. Do not output placeholders.\n' +
+    '- Do not output acknowledgement text like accepted/in progress/announcement.\n' +
+    '- Do not execute pseudo-commands like strategos.run_engine in shell.\n' +
+    '- Do not run openclaw CLI commands inside the task flow.\n' +
+    '- Use exec tool with this exact command:\n' +
+    '  python3 /home/ubuntu/.openclaw/workspace/skills/strategos-core/strategos_telegram_flow.py --scenario "<user text>" --base-url "${STRATEGOS_API_BASE_URL}" --token "${STRATEGOS_API_TOKEN}"\n' +
+    '- Return only one compact JSON object with keys: session_id, deterministic_state, contributions, restructuring, board_insights, executive_summary.\n'
+)
+(main_ws / 'TOOLS.md').write_text(
+    'Use only STRATEGOS REST workflow via strategos-core skill.\n' +
+    'Never run openclaw CLI inside agent flow.\n' +
+    'Use exec + python3 script at /home/ubuntu/.openclaw/workspace/skills/strategos-core/strategos_telegram_flow.py.\n' +
+    'No direct DB access.\n'
+)
 print('Applied strategos agents:', len(strategos_entries))
 PY
 /home/ubuntu/.npm-global/bin/openclaw agents list --json
+
+# Reset per-agent sessions so stale conversational state cannot survive redeploy.
+for id in \
+  strategos-schema-extraction \
+  strategos-strategy-advisor \
+  strategos-risk-officer \
+  strategos-architecture-advisor \
+  strategos-financial-impact-advisor \
+  strategos-synthesis-advisor \
+  main; do
+  sdir="/home/ubuntu/.openclaw/agents/$id/sessions"
+  mkdir -p "$sdir"
+  printf '[]\n' > "$sdir/sessions.json"
+done
 '@
 $remoteScriptB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($remoteScript))
 

@@ -57,6 +57,7 @@ export async function submitIntake(payload: {
   tenant_id: string;
   model_version_id: string;
   text: string;
+  assumption_profile?: "balanced" | "growth" | "stressed" | "none";
 }) {
   return request<{ data: Record<string, unknown> }>("/intake", {
     method: "POST",

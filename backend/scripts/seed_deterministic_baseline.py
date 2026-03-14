@@ -89,7 +89,29 @@ async def main():
             await conn.execute(delete(m.RestructuringTemplate).where(m.RestructuringTemplate.id.in_(rt_rows)))
 
         # Metrics
-        metric_ids = {name: uuid.uuid4() for name in ["revenue", "cost", "margin", "technical_debt"]}
+        metric_names = [
+            "revenue",
+            "cost",
+            "margin",
+            "technical_debt",
+            "revenue_growth_yoy_pct",
+            "customer_churn_pct",
+            "net_promoter_score",
+            "cloud_adoption_pct",
+            "release_frequency_per_month",
+            "lead_time_days",
+            "change_failure_rate_pct",
+            "p1_incidents_per_month",
+            "automation_coverage_pct",
+            "cyber_findings_open_high",
+            "regulatory_findings_open",
+            "critical_role_attrition_pct",
+            "vendor_concentration_pct",
+            "top_customer_concentration_pct",
+            "digital_capex_pct_of_revenue",
+            "cash_conversion_cycle_days",
+        ]
+        metric_ids = {name: uuid.uuid4() for name in metric_names}
         for name, mid in metric_ids.items():
             await conn.execute(
                 insert(m.Metric).values(
@@ -101,12 +123,26 @@ async def main():
                 )
             )
 
-        # Coefficients: scalar + formula
+        # Coefficients: formula-first so partial input can still produce a
+        # nuanced baseline once defaults are applied in intake.
         coeffs = [
-            ("revenue", "0.08"),
-            ("cost", "-0.05"),
-            ("margin", "0.40"),
-            ("composite_stress", "(cost * 0.04) + (technical_debt * 0.06) - (margin * 0.15)"),
+            ("scale_protection", "revenue * 0.01"),
+            ("operating_drag", "-(cost * 0.012)"),
+            ("profitability_buffer", "margin * 140"),
+            ("tech_debt_drag", "-(technical_debt * 0.18)"),
+            ("growth_signal", "revenue_growth_yoy_pct * 0.8"),
+            ("churn_drag", "-(customer_churn_pct * 3.0)"),
+            ("experience_signal", "net_promoter_score * 0.2"),
+            ("delivery_velocity", "release_frequency_per_month * 0.5"),
+            ("lead_time_drag", "-(lead_time_days * 0.4)"),
+            ("change_failure_drag", "-(change_failure_rate_pct * 0.35)"),
+            ("reliability_drag", "-(p1_incidents_per_month * 1.5)"),
+            ("automation_signal", "automation_coverage_pct * 0.1"),
+            ("compliance_drag", "-((cyber_findings_open_high * 1.2) + (regulatory_findings_open * 1.5))"),
+            ("attrition_drag", "-(critical_role_attrition_pct * 0.5)"),
+            ("concentration_drag", "-((vendor_concentration_pct * 0.08) + (top_customer_concentration_pct * 0.1))"),
+            ("digital_investment_signal", "digital_capex_pct_of_revenue * 0.7"),
+            ("liquidity_drag", "-(cash_conversion_cycle_days * 0.12)"),
         ]
         for cname, cvalue in coeffs:
             await conn.execute(
@@ -122,40 +158,65 @@ async def main():
 
         # Rules
         rules = {
-            "high_cost_pressure": {
-                "expr": "cost > 220",
-                "impact": "12",
-                "desc": "Operating cost pressure above tolerance",
-            },
-            "margin_collapse": {
+            "margin_collapse_risk": {
                 "expr": "margin < 0.12",
                 "impact": "16",
                 "desc": "Margin collapse risk",
             },
-            "debt_spike": {
-                "expr": "technical_debt > 70",
-                "impact": "10",
-                "desc": "Technical debt exposure high",
+            "technical_debt_overhang": {
+                "expr": "technical_debt > 65",
+                "impact": "12",
+                "desc": "Technical debt exposure above safe modernization range",
             },
-            "revenue_erosion": {
-                "expr": "revenue < 900",
-                "impact": "9",
-                "desc": "Revenue baseline has fallen below expected operating floor",
-            },
-            "cost_revenue_imbalance": {
-                "expr": "cost > (revenue * 0.78)",
-                "impact": "11",
-                "desc": "Operating cost-to-revenue ratio indicates structural inefficiency",
-            },
-            "margin_debt_double_stress": {
-                "expr": "(margin < 0.15) and (technical_debt > 55)",
+            "structural_cost_intensity": {
+                "expr": "cost > (revenue * 0.82)",
                 "impact": "14",
-                "desc": "Weak margin combined with elevated technical debt increases fragility",
+                "desc": "Cost-to-revenue ratio indicates structural inefficiency",
             },
-            "margin_cost_stress": {
-                "expr": "(margin < 0.18) and (cost > 180)",
+            "growth_deceleration": {
+                "expr": "revenue_growth_yoy_pct < 3",
                 "impact": "8",
-                "desc": "Subscale margin with high operating cost raises execution risk",
+                "desc": "Revenue growth has slowed below strategic expectation",
+            },
+            "customer_retention_pressure": {
+                "expr": "customer_churn_pct > 2.8",
+                "impact": "9",
+                "desc": "Customer churn pressure threatens durable growth",
+            },
+            "delivery_instability": {
+                "expr": "(lead_time_days > 14) or (change_failure_rate_pct > 20)",
+                "impact": "8",
+                "desc": "Delivery system instability increases transformation execution risk",
+            },
+            "operational_reliability_breach": {
+                "expr": "p1_incidents_per_month > 5",
+                "impact": "10",
+                "desc": "High-severity incident load indicates fragile operations",
+            },
+            "compliance_security_pressure": {
+                "expr": "(cyber_findings_open_high > 10) or (regulatory_findings_open > 5)",
+                "impact": "11",
+                "desc": "Compliance and security findings exceed tolerance",
+            },
+            "critical_talent_loss": {
+                "expr": "critical_role_attrition_pct > 12",
+                "impact": "7",
+                "desc": "Critical-role attrition threatens execution continuity",
+            },
+            "concentration_exposure": {
+                "expr": "(vendor_concentration_pct > 50) or (top_customer_concentration_pct > 40)",
+                "impact": "8",
+                "desc": "Concentration risk increases dependency fragility",
+            },
+            "modernization_gap": {
+                "expr": "(cloud_adoption_pct < 40) and (automation_coverage_pct < 40)",
+                "impact": "9",
+                "desc": "Modernization base is below minimum viable transformation readiness",
+            },
+            "cash_cycle_stress": {
+                "expr": "cash_conversion_cycle_days > 80",
+                "impact": "8",
+                "desc": "Cash conversion cycle is too long for resilient execution",
             },
         }
 
@@ -193,8 +254,8 @@ async def main():
         # States and thresholds
         state_map = {
             "NORMAL": 0,
-            "ELEVATED_RISK": 35,
-            "CRITICAL_ZONE": 60,
+            "ELEVATED_RISK": 40,
+            "CRITICAL_ZONE": 90,
         }
         for sname, threshold in state_map.items():
             sid = uuid.uuid4()
@@ -224,6 +285,10 @@ async def main():
             {
                 "name": "cost_containment_program",
                 "payload": {"action": "cost_containment", "owner": "CFO", "horizon_days": 60},
+            },
+            {
+                "name": "technology_modernization_wave",
+                "payload": {"action": "modernization_wave", "owner": "CTO", "horizon_days": 120},
             },
         ]
 

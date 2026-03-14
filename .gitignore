@@ -31,6 +31,7 @@ htmlcov/
 # Frontend build outputs
 frontend/.next/
 frontend/out/
+frontend/tsconfig.tsbuildinfo
 
 # Python tooling caches
 .mypy_cache/
@@ -40,6 +41,16 @@ frontend/out/
 *.db
 *.sqlite
 *.sqlite3
+
+# Local keys and secrets files
+keys/
+*.pem
+*.key
+*.crt
+
+# Temporary artifacts
+tmp_report_test.pdf
+pytest-cache-files-*/
 
 # OS/editor noise
 Thumbs.db

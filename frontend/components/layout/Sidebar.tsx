@@ -11,6 +11,7 @@ const NAV = [
   { label: "Sessions", href: "/dashboard/sessions", icon: "▦", roles: ["admin", "analyst"] },
   { label: "Compare", href: "/dashboard/compare", icon: "⇌", roles: ["admin", "analyst"] },
   { label: "Downloads", href: "/dashboard/downloads", icon: "↓" },
+  { label: "Access", href: "/dashboard/access", icon: "✓", roles: ["admin"] },
   { label: "Admin", href: "/dashboard/admin", icon: "⚙", roles: ["admin"] },
 ];
 

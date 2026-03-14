@@ -19,6 +19,7 @@ param(
     [string]$OpenClawApiBaseUrl = "",
     [string]$OpenClawApiAgentPath = "/agent",
     [string]$OpenClawApiAuthToken = "",
+    [string]$OpenClawApiTimeoutSeconds = "8",
     [string]$OpenClawAgentTimeoutSeconds = "90",
 
     [string]$User = "ubuntu"
@@ -54,6 +55,7 @@ OPENCLAW_ALLOW_DETERMINISTIC_FALLBACK=$OpenClawAllowDeterministicFallback
 OPENCLAW_API_BASE_URL=$OpenClawApiBaseUrl
 OPENCLAW_API_AGENT_PATH=$OpenClawApiAgentPath
 OPENCLAW_API_AUTH_TOKEN=$OpenClawApiAuthToken
+OPENCLAW_API_TIMEOUT_SECONDS=$OpenClawApiTimeoutSeconds
 OPENCLAW_AGENT_TIMEOUT_SECONDS=$OpenClawAgentTimeoutSeconds
 "@
 $remoteEnvB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($remoteEnv))

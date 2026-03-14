@@ -46,7 +46,7 @@ if [ -f "alembic.ini" ]; then
 fi
 
 if [ -f "scripts/seed_deterministic_baseline.py" ]; then
-  python scripts/seed_deterministic_baseline.py || true
+  python scripts/seed_deterministic_baseline.py
 fi
 
 cat > "$SERVICE_FILE" <<'UNIT'

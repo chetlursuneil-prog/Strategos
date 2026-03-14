@@ -1,25 +1,42 @@
-# STRATEGOS Backend — Local dev & migrations
+# STRATEGOS Backend
 
-This file describes how to run migrations locally against a Supabase Postgres database **without committing secrets** to the repository.
+FastAPI backend for deterministic transformation diagnostics, auth, advisory orchestration, and report generation.
 
-1) Create a local `.env` in `backend/` (DO NOT commit this file).
+## Main modules
 
-Example `.env` (replace values; keep this file out of git):
+- API composition: `app/main.py`
+- Deterministic engine: `app/services/engine.py`
+- Intake endpoint: `app/api/v1/intake.py`
+- Advisory endpoints: `app/api/v1/advisory.py`
+- Auth endpoints: `app/api/v1/auth.py`
+- Reports (PDF/CSV): `app/api/v1/reports.py`
+- DB models: `app/db/models.py`
+- DB session/engine setup: `app/db/session.py`
 
+## Database
+
+- Local default: SQLite (`strategos_dev.db`)
+- Production: PostgreSQL/Supabase via asyncpg
+- Migrations: Alembic in `alembic/versions/`
+
+## Required env (typical)
+
+```bash
+DATABASE_URL=postgresql://<user>:<password>@<host>:<port>/postgres
+STRATEGOS_AUTH_SECRET=<strong-secret>
+STRATEGOS_PUBLIC_BASE_URL=https://<your-domain>
 ```
-SUPABASE_URL=https://<your-project-ref>.supabase.co
-SUPABASE_DB_URL=postgresql://<user>:<password>@db.<host>.supabase.co:5432/postgres
-SUPABASE_SERVICE_ROLE_KEY=<service_role_key_here>
 
-DATABASE_URL=${SUPABASE_DB_URL}
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=replace_with_secure_key
-ENV=development
-OPENCLAW_BIN=/home/ubuntu/.npm-global/bin/openclaw
-OPENCLAW_AGENT_TIMEOUT_SECONDS=90
+Optional OpenClaw-related env:
+
+```bash
+OPENCLAW_EXECUTION_MODE=remote_http
+OPENCLAW_API_BASE_URL=http://<openclaw-host>:8000
+OPENCLAW_API_AGENT_PATH=/v1/agent
+OPENCLAW_ALLOW_DETERMINISTIC_FALLBACK=true
 ```
 
-2) Install dependencies and activate a virtual environment (PowerShell):
+## Local setup
 
 ```powershell
 cd backend
@@ -27,58 +44,33 @@ python -m venv .venv
 . .venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r requirements.txt
+python -m alembic -c alembic.ini upgrade head
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-3) Export the environment variables for the current session (PowerShell):
-
-```powershell
-$env:DATABASE_URL = 'postgresql://postgres:<password>@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres'
-$env:SUPABASE_SERVICE_ROLE_KEY = '<service_role_key_here>'
-```
-
-4) Create and run migrations (uses `alembic.ini` in `backend/`):
-
-```powershell
-# create an autogen revision (this reads models from app.db.base + app.db.models)
-alembic -c alembic.ini revision --autogenerate -m "initial"
-
-# apply migrations to the target database
-alembic -c alembic.ini upgrade head
-```
-
-Notes & security
-- Never paste the `service_role` key into public chat or commit it to git.
-- For CI, add `DATABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to GitHub Actions secrets.
-- If you prefer, run migrations against a local Docker Postgres for development and only run production migrations against Supabase.
-
-## OpenClaw integration bundle
-
-An OpenClaw-ready skills/agents bundle is now available in `backend/openclaw/`.
+## Seed deterministic baseline
 
 ```powershell
 cd backend
-python .\scripts\validate_openclaw_bundle.py
-```
-
-See `backend/openclaw/README.md` for EC2 integration mapping steps.
-
-## Deterministic baseline seeding
-
-Use these scripts to populate a usable deterministic baseline (metrics, coefficients, rules, thresholds, restructuring templates):
-
-```powershell
-cd backend
-
-# seed baseline into the currently configured DATABASE_URL
 python .\scripts\seed_deterministic_baseline.py
-
-# optional local smoke check for seeded behavior
 python .\scripts\smoke_seeded_engine.py
 ```
 
-Optional target override:
+## Tests
 
-- `SEED_TENANT_ID` (UUID)
-- `SEED_MODEL_VERSION_ID` (UUID)
+```powershell
+cd backend
+pytest -q
+```
 
-If not provided, the script uses the first tenant/model version or creates a baseline pair.
+## EC2 and OpenClaw scripts
+
+- Strategos backend deploy: `scripts/deploy_strategos_ec2.ps1`
+- OpenClaw skill deploy: `scripts/deploy_openclaw_strategos_skill.ps1`
+- OpenClaw agent deploy: `scripts/deploy_openclaw_strategos_agents.ps1`
+- Mode switch (integrated vs strategos-only):
+  - `scripts/switch_strategos_mode.ps1`
+  - `scripts/strategos_mode_switch.sh`
+- OpenClaw dashboard tunnel helper: `scripts/openclaw_dashboard_tunnel.ps1`
+
+For complete architecture and flow, see root `README.md`.

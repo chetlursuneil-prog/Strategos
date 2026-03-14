@@ -11,6 +11,7 @@ interface Props {
   rows: string[];
   cols: string[];
   cells: number[][]; // rows × cols
+  rowHeaderLabel?: string;
 }
 
 function color(v: number) {
@@ -19,13 +20,13 @@ function color(v: number) {
   return "bg-red-900/50 text-red-400";
 }
 
-export default function RiskHeatmap({ rows, cols, cells }: Props) {
+export default function RiskHeatmap({ rows, cols, cells, rowHeaderLabel = "Rule" }: Props) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr>
-            <th className="p-2 text-left text-gray-500"></th>
+            <th className="p-2 text-left text-gray-500 uppercase tracking-wider font-medium">{rowHeaderLabel}</th>
             {cols.map((c) => (
               <th key={c} className="p-2 text-center text-gray-500 uppercase tracking-wider font-medium">
                 {c}
