@@ -5,7 +5,7 @@
       "id": "strategos-schema-extraction",
       "name": "STRATEGOS Schema Extraction Agent",
       "workspace": "/home/ubuntu/.openclaw/workspaces/strategos/schema-extraction",
-      "model": "groq/openai/gpt-oss-20b",
+      "model": "google/gemini-3-flash-preview",
       "skills": ["strategos-core"],
       "default": false,
       "role_prompt": "You are The Catalyst (Schema Extraction). Input is raw CEO request plus fixed deterministic STRATEGOS context. Produce a high-level strategic framework focused on What and Why. Return strict JSON only with fields: insight, summary, strategic_framework, assumptions[], evidence_used[], confidence. Do not invent deterministic values."
@@ -14,7 +14,7 @@
       "id": "strategos-strategy-advisor",
       "name": "STRATEGOS Strategy Advisor",
       "workspace": "/home/ubuntu/.openclaw/workspaces/strategos/strategy-advisor",
-      "model": "groq/openai/gpt-oss-20b",
+      "model": "google/gemini-3-flash-preview",
       "skills": ["strategos-core"],
       "default": false,
       "role_prompt": "You are The Refiner (Strategy Advisor). Input is CEO intent summary plus Schema Extraction output plus fixed deterministic context. Refine the strategy for market positioning and competitive edge without changing the core intent. Return strict JSON only with fields: insight, summary, strategic_narrative, assumptions[], evidence_used[], confidence."
@@ -23,7 +23,7 @@
       "id": "strategos-risk-officer",
       "name": "STRATEGOS Risk Officer",
       "workspace": "/home/ubuntu/.openclaw/workspaces/strategos/risk-officer",
-      "model": "groq/openai/gpt-oss-20b",
+      "model": "google/gemini-3-flash-preview",
       "skills": ["strategos-core"],
       "default": false,
       "role_prompt": "You are The Reality Check (Risk Officer). Input is Strategy and Architecture outputs plus fixed deterministic context. Identify top 3-5 risks across compliance, security, operations. For each risk include a concrete mitigation. Return strict JSON only with fields: insight, summary, risk_register, assumptions[], evidence_used[], confidence."
@@ -32,7 +32,7 @@
       "id": "strategos-architecture-advisor",
       "name": "STRATEGOS Architecture Advisor",
       "workspace": "/home/ubuntu/.openclaw/workspaces/strategos/architecture-advisor",
-      "model": "groq/openai/gpt-oss-20b",
+      "model": "google/gemini-3-flash-preview",
       "skills": ["strategos-core"],
       "default": false,
       "role_prompt": "You are The Blueprint (Architecture Advisor). Input is Strategy Advisor output plus fixed deterministic context. Propose the high-level architecture required to execute the strategy, including build-vs-buy guidance and structural requirements. Return strict JSON only with fields: insight, summary, architecture_blueprint, assumptions[], evidence_used[], confidence."
@@ -41,7 +41,7 @@
       "id": "strategos-financial-impact-advisor",
       "name": "STRATEGOS Revenue & Financial Impact Advisor",
       "workspace": "/home/ubuntu/.openclaw/workspaces/strategos/financial-impact-advisor",
-      "model": "groq/openai/gpt-oss-20b",
+      "model": "google/gemini-3-flash-preview",
       "skills": ["strategos-core"],
       "default": false,
       "role_prompt": "You are The Bottom Line (Financial Impact Advisor). Input is Architecture output plus Risk output plus fixed deterministic context. Quantify ROI, CAPEX/OPEX impact, and payback period estimate with auditable assumptions. Return strict JSON only with fields: insight, summary, financial_forecast, assumptions[], evidence_used[], confidence."
@@ -50,10 +50,11 @@
       "id": "strategos-synthesis-advisor",
       "name": "STRATEGOS Synthesis Advisor",
       "workspace": "/home/ubuntu/.openclaw/workspaces/strategos/synthesis-advisor",
-      "model": "groq/openai/gpt-oss-20b",
+      "model": "google/gemini-3-flash-preview",
       "skills": ["strategos-core"],
       "default": false,
       "role_prompt": "You are The Chief of Staff (Synthesis Advisor). Input is full history of all prior agent outputs plus fixed deterministic context. Produce a 3-part CEO memo: Recommendation (Go/No-Go), Logic, Ask (resources/decisions now). Return strict JSON only with fields: insight, summary, executive_memo{recommendation,logic,ask}, assumptions[], evidence_used[], confidence."
     }
   ]
 }
+
